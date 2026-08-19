@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>커피클럽 라벨 프린터</title>
+<meta name="description" content="커피클럽 RP420 라벨 프린터 웹 앱">
+<meta name="theme-color" content="#f7f7f9">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <h1>커피클럽 라벨 프린터</h1>
+    <div class="spacer"></div>
+    <button id="connectBtn"><span class="dot"></span><span id="connectTxt">프린터 연결</span></button>
+  </div>
+
+  <!-- 커피 선택 -->
+  <div class="card">
+    <div class="card-hd">
+      <span class="sec">커피 선택</span>
+      <div class="spacer"></div>
+      <button class="pill" id="refreshBtn">새로고침</button>
+    </div>
+    <input type="search" id="coffeeSearch" placeholder="🔍 커피 이름 검색" autocomplete="off">
+    <div class="row" style="margin-top:10px">
+      <select id="coffeeSelect"><option>불러오는 중…</option></select>
+    </div>
+    <div class="flavor" id="flavor">—</div>
+  </div>
+
+  <!-- 로스팅 · 날짜 -->
+  <div class="card">
+    <div class="card-hd">
+      <span class="sec">로스팅 포인트</span>
+      <div class="spacer"></div>
+      <button class="pill" id="saveBtn">저장</button>
+    </div>
+    <input type="text" id="roasting" placeholder="예: Light / Medium / Dark" autocomplete="off">
+    <div class="row" style="margin-top:10px">
+      <label class="chk" style="flex:none">
+        <input type="checkbox" id="dateCheck"><span class="box"></span>날짜 표시
+      </label>
+      <input type="text" id="dateInput" placeholder="예: 2026.05.14" disabled>
+    </div>
+  </div>
+
+  <!-- 폰트 -->
+  <div class="card">
+    <div class="card-hd"><span class="sec">한글 폰트</span></div>
+    <select id="fontSelect"></select>
+
+    <div class="card-hd" style="margin-top:16px"><span class="sec">폰트 크기</span></div>
+    <div class="steps" id="fontSteps"></div>
+  </div>
+
+  <!-- 추가 텍스트 -->
+  <div class="card">
+    <div class="card-hd">
+      <span class="sec">추가 텍스트</span>
+      <div class="spacer"></div>
+      <select id="presetSelect" style="width:132px;height:30px;padding:0 30px 0 12px;border-radius:15px;font-size:12px;font-weight:600;color:var(--ink-sub)">
+        <option value="">— 프리셋 —</option>
+      </select>
+      <button class="pill mini" id="presetSave">저장</button>
+      <button class="pill mini danger" id="presetDel">삭제</button>
+    </div>
+    <textarea id="customText" placeholder="라벨에 추가할 문구 (비워두면 미출력)&#10;엔터로 줄바꿈"></textarea>
+    <div class="steps" style="margin-top:10px;grid-template-columns:1fr" id="customSteps"></div>
+  </div>
+
+  <!-- QR -->
+  <div class="card">
+    <div class="card-hd"><span class="sec">QR 코드 대상</span></div>
+    <div class="seg" id="qrSeg">
+      <button class="on" data-i="0">☕ 커피 정보</button>
+      <button data-i="1">🛒 네이버 스토어</button>
+      <button data-i="2">✏️ 직접 입력</button>
+    </div>
+    <input type="text" id="qrCustom" class="hide" style="margin-top:10px" placeholder="https://…" autocomplete="off">
+  </div>
+
+  <!-- 표시 설정 -->
+  <div class="card">
+    <div class="card-hd"><span class="sec">표시 설정 · 드래그로 순서 변경</span></div>
+    <ul id="orderList"></ul>
+    <div class="row" style="margin-top:12px;gap:18px">
+      <label class="chk"><input type="checkbox" id="visQR" checked><span class="box"></span>QR코드</label>
+      <label class="chk"><input type="checkbox" id="visDetails" checked><span class="box"></span>자세히보기</label>
+    </div>
+  </div>
+
+  <!-- 미리보기 · 출력 -->
+  <div class="card">
+    <div class="card-hd"><span class="sec">미리보기</span></div>
+    <div class="preview"><canvas id="previewCanvas" width="720" height="360"></canvas></div>
+    <div class="steps" style="margin-top:12px;grid-template-columns:1fr" id="copySteps"></div>
+    <div class="actions" style="margin-top:12px">
+      <button class="btn primary" id="printBtn">인쇄</button>
+      <button class="btn slim" id="ejectBtn">배출</button>
+      <button class="btn slim" id="calibBtn">캘리브레이션</button>
+    </div>
+    <div id="status"></div>
+    <div class="hint">
+      인쇄하려면 <b>Chrome</b>(또는 Edge)에서 열고, RP420이 USB로 연결된 상태에서
+      <b>프린터 연결</b>을 눌러 장치를 선택하세요. 편집과 미리보기는 어떤 브라우저에서도 가능합니다.
+    </div>
+  </div>
+
+</div>
+
+<script src="lib/qrcode.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
