@@ -388,6 +388,14 @@ function ejectCommand() {
 const calibrateCommand = () =>
   new TextEncoder().encode('SIZE 30 mm,15 mm\r\nGAP 3 mm,0 mm\r\nCLS\r\nPRINT 1\r\n');
 
+/**
+ * 인쇄 전 라벨 위치 자동 정렬 — '빈 이송 → 갭센서 캘리브' 순서.
+ * 이 프린터는 래스터 인쇄 때 갭 센서를 쓰지 않아 위치가 어긋나고,
+ * HOME·FORMFEED·BACKFEED·SET TEAR ON 은 듣지 않았다. (라벨 1장 소비)
+ */
+const ALIGN_WAIT = 2500;
+const alignJobs = () => [ejectCommand(), calibrateCommand()];
+
 // ─────────── WebUSB ───────────
 function usbSupported() { return 'usb' in navigator; }
 
@@ -443,7 +451,7 @@ async function tryReconnect() {
  * 인쇄할 때만 열고·붙잡고, 끝나면 즉시 놓아준다.
  * jobs 안의 명령들은 한 번의 점유로 이어서 보낸다(연속 인쇄).
  */
-async function sendUSBJobs(jobs, gapMs = 0) {
+async function sendUSBJobs(jobs) {
   const dev = state.device;
   if (!dev) throw new Error('프린터가 연결되지 않았어요. [프린터 연결]을 먼저 눌러주세요.');
 
@@ -456,12 +464,12 @@ async function sendUSBJobs(jobs, gapMs = 0) {
   }
   try {
     const CHUNK = 4096;
-    for (let j = 0; j < jobs.length; j++) {
-      const bytes = jobs[j];
+    for (const job of jobs) {
+      const bytes = job.data || job;          // Uint8Array 또는 {data, wait}
       for (let i = 0; i < bytes.length; i += CHUNK) {
         await dev.transferOut(state.endpoint, bytes.slice(i, i + CHUNK));
       }
-      if (gapMs && j < jobs.length - 1) await sleep(gapMs);
+      if (job.wait) await sleep(job.wait);
     }
   } finally {
     try { await dev.releaseInterface(state.iface); } catch {}
@@ -533,16 +541,12 @@ async function doPrint() {
         data: toBase64(bmp.data), height: bmp.height, copies,
       });
     } else {
-      if (!store.get(LS_CALIB, false)) {
-        await sendUSB(calibrateCommand());
-        await sleep(1500);
-        store.set(LS_CALIB, true);
-      }
       const bytes = labelToRaster(buildOrder());
-      const jobs = [];
-      for (let i = 0; i < copies; i++) jobs.push(bytes);
+      // 정렬(빈 이송 → 캘리브) → 인쇄 → 배출 을 한 번의 점유로 이어서 전송
+      const jobs = alignJobs().map((data) => ({ data, wait: ALIGN_WAIT }));
+      for (let i = 0; i < copies; i++) jobs.push({ data: bytes, wait: 300 });
       jobs.push(ejectCommand());
-      await sendUSBJobs(jobs, 300);   // 한 번 점유해서 연속 전송
+      await sendUSBJobs(jobs);
     }
     setStatus(`✓ 인쇄 완료 (${copies}장)`);
   } catch (e) {
