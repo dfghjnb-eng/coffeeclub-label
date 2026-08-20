@@ -76,6 +76,38 @@ const store = {
   set(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} },
 };
 
+/**
+ * 프리셋·설정 저장소
+ *
+ * 매장 서버에 연결돼 있으면 맥의 파일을 그대로 쓴다.
+ * → 데스크톱 앱에서 저장한 프리셋·설정이 폰에서도 그대로 보이고, 반대도 마찬가지.
+ * 서버가 없으면(GitHub Pages 등) 브라우저 저장소를 쓴다.
+ */
+const remote = {
+  async load(kind) {                       // kind: 'presets' | 'settings'
+    if (state.mode === 'server') {
+      try {
+        const info = await (await fetch('api/' + kind)).json();
+        if (info.ok) return info[kind] || {};
+      } catch {}
+    }
+    return store.get(kind === 'presets' ? LS_PRESETS : LS_SETTINGS, {}) || {};
+  },
+  async save(kind, data) {
+    if (state.mode === 'server') {
+      try {
+        await fetch('api/' + kind, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [kind]: data }),
+        });
+        return;
+      } catch {}
+    }
+    store.set(kind === 'presets' ? LS_PRESETS : LS_SETTINGS, data);
+  },
+};
+
 // ─────────── 스핀박스 위젯 ───────────
 function makeStep(parent, key, label, val, min, max, step, decimals) {
   const wrap = document.createElement('div');
@@ -644,55 +676,60 @@ function selectCoffee(id) {
 }
 
 // ─────────── 설정 저장/불러오기 ───────────
-function loadSettings(id) {
-  const s = (store.get(LS_SETTINGS, {}) || {})[id] || {};
+// ※ 키 이름은 데스크톱 앱(printer_app.py)과 반드시 같아야 한다.
+//    매장 서버가 맥의 ~/.coffeeclub_printer.json 을 그대로 넘겨주기 때문.
+async function loadSettings(id) {
+  const s = (await remote.load('settings'))[id] || {};
   $('roasting').value   = s.roasting ?? '';
-  $('customText').value = s.customText ?? '';
-  setStep('fsNum',    s.fsNum    ?? 18);
-  setStep('fsMain',   s.fsMain   ?? 14);
-  setStep('fsSub',    s.fsSub    ?? 11);
-  setStep('fsTiny',   s.fsTiny   ?? 8);
-  setStep('fsCustom', s.fsCustom ?? 11);
+  $('customText').value = s.custom_text ?? '';
+  setStep('fsNum',    s.fs_num    ?? 18);
+  setStep('fsMain',   s.fs_main   ?? 14);
+  setStep('fsSub',    s.fs_sub    ?? 11);
+  setStep('fsTiny',   s.fs_tiny   ?? 8);
+  setStep('fsCustom', s.fs_custom ?? 11);
   setStep('lsSpin',   s.ls ?? 0);
   setStep('lgSpin',   s.lg ?? 0);
   if (s.font && FONTS[s.font]) $('fontSelect').value = s.font;
 
-  state.qrType = s.qrType ?? 0;
-  $('qrCustom').value = s.qrCustom ?? '';
+  state.qrType = s.qr_type ?? 0;
+  $('qrCustom').value = s.qr_custom ?? '';
   paintQRSeg();
 
-  state.order = (s.order && s.order.length) ? s.order.filter((k) => ORDER_LABELS[k]) : DEFAULT_ORDER.slice();
+  const order = s.element_order;
+  state.order = (order && order.length) ? order.filter((k) => ORDER_LABELS[k]) : DEFAULT_ORDER.slice();
   for (const k of DEFAULT_ORDER) if (!state.order.includes(k)) state.order.push(k);
-  state.checked = new Set(s.checked ?? DEFAULT_ORDER);
+  state.checked = new Set(s.element_checked ?? DEFAULT_ORDER);
   buildOrderList();
 
-  $('visQR').checked      = s.showQR      ?? true;
-  $('visDetails').checked = s.showDetails ?? true;
-  $('dateCheck').checked  = s.showDateRow ?? false;
+  $('visQR').checked      = s.show_qr      ?? true;
+  $('visDetails').checked = s.show_details ?? true;
+  $('dateCheck').checked  = s.date_check   ?? false;
   $('dateInput').value    = s.date || todayStr();
   syncDateInput();
   ensureFont();
 }
 
-function saveSettings() {
+async function saveSettings() {
   const id = state.current?.id;
   if (!id) { setStatus('커피를 먼저 선택해주세요.'); return; }
-  const all = store.get(LS_SETTINGS, {}) || {};
+  const all = await remote.load('settings');
   all[id] = {
-    roasting:   $('roasting').value.trim(),
-    customText: $('customText').value,
-    font:       $('fontSelect').value,
-    fsNum: getStep('fsNum'), fsMain: getStep('fsMain'), fsSub: getStep('fsSub'),
-    fsTiny: getStep('fsTiny'), fsCustom: getStep('fsCustom'),
+    roasting:    $('roasting').value.trim(),
+    font:        $('fontSelect').value,
+    date_check:  $('dateCheck').checked,
+    date:        $('dateInput').value.trim(),
+    fs_num: getStep('fsNum'), fs_main: getStep('fsMain'), fs_sub: getStep('fsSub'),
+    fs_tiny: getStep('fsTiny'), fs_custom: getStep('fsCustom'),
     ls: getStep('lsSpin'), lg: getStep('lgSpin'),
-    qrType: state.qrType, qrCustom: $('qrCustom').value.trim(),
-    order: state.order.slice(),
-    checked: [...state.checked],
-    showQR: $('visQR').checked, showDetails: $('visDetails').checked,
-    showDateRow: $('dateCheck').checked, date: $('dateInput').value.trim(),
+    custom_text: $('customText').value,
+    qr_type: state.qrType, qr_custom: $('qrCustom').value.trim(),
+    element_order: state.order.slice(),
+    element_checked: [...state.checked],
+    show_qr: $('visQR').checked, show_details: $('visDetails').checked,
   };
-  store.set(LS_SETTINGS, all);
-  setStatus(`✓ [${state.current.name}] 설정 저장 완료`);
+  await remote.save('settings', all);
+  setStatus(`✓ [${state.current.name}] 설정 저장 완료`
+            + (state.mode === 'server' ? ' (매장 맥에 저장됨)' : ''));
 }
 
 const todayStr = () => {
@@ -701,16 +738,18 @@ const todayStr = () => {
   return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
 };
 
-// ─────────── 프리셋 ───────────
-function reloadPresets() {
-  const presets = store.get(LS_PRESETS, {}) || {};
+// ─────────── 프리셋 (매장 서버 연결 시 맥의 파일 공유) ───────────
+async function reloadPresets() {
+  const presets = await remote.load('presets');
   const sel = $('presetSelect');
+  const keep = sel.value;
   sel.innerHTML = '<option value="">— 프리셋 —</option>';
   for (const name of Object.keys(presets)) {
     const o = document.createElement('option');
     o.value = name; o.textContent = name;
     sel.appendChild(o);
   }
+  if (keep && presets[keep]) sel.value = keep;
 }
 
 // ─────────── 표시설정 리스트 (드래그 순서) ───────────
@@ -821,33 +860,36 @@ function init() {
     b.onclick = () => { state.qrType = +b.dataset.i; paintQRSeg(); render(); };
   });
 
-  $('presetSelect').onchange = (e) => {
+  $('presetSelect').onchange = async (e) => {
     const name = e.target.value;
     if (!name) return;
-    const presets = store.get(LS_PRESETS, {}) || {};
+    const presets = await remote.load('presets');
     if (presets[name] != null) { $('customText').value = presets[name]; render(); }
     e.target.value = '';
   };
-  $('presetSave').onclick = () => {
+  // 목록을 펼칠 때마다 최신 프리셋을 다시 읽는다 (맥에서 방금 추가한 것도 보이도록)
+  $('presetSelect').onmousedown = () => { reloadPresets(); };
+  $('presetSave').onclick = async () => {
     const text = $('customText').value.trim();
     if (!text) { setStatus('저장할 텍스트를 먼저 입력해주세요.'); return; }
     const name = prompt('프리셋 이름을 입력하세요:');
     if (!name || !name.trim()) return;
-    const presets = store.get(LS_PRESETS, {}) || {};
+    const presets = await remote.load('presets');
     presets[name.trim()] = text;
-    store.set(LS_PRESETS, presets);
-    reloadPresets();
-    setStatus(`✓ 프리셋 [${name.trim()}] 저장됨`);
+    await remote.save('presets', presets);
+    await reloadPresets();
+    setStatus(`✓ 프리셋 [${name.trim()}] 저장됨`
+              + (state.mode === 'server' ? ' (매장 맥에 저장됨)' : ''));
   };
-  $('presetDel').onclick = () => {
-    const presets = store.get(LS_PRESETS, {}) || {};
+  $('presetDel').onclick = async () => {
+    const presets = await remote.load('presets');
     const names = Object.keys(presets);
     if (!names.length) { setStatus('저장된 프리셋이 없습니다.'); return; }
     const name = prompt(`삭제할 프리셋 이름:\n\n${names.join(', ')}`);
     if (!name || !presets[name]) return;
     delete presets[name];
-    store.set(LS_PRESETS, presets);
-    reloadPresets();
+    await remote.save('presets', presets);
+    await reloadPresets();
     setStatus(`✓ 프리셋 [${name}] 삭제됨`);
   };
 
@@ -857,7 +899,10 @@ function init() {
   $('calibBtn').onclick = doCalibrate;
 
   // 매장 인쇄 서버가 서빙 중이면 서버 모드, 아니면 이 컴퓨터의 USB(WebUSB) 모드
+  // 모드가 정해진 뒤에 프리셋·커피 목록을 읽어야 매장 맥의 파일을 가져온다
   detectServer().then((isServer) => {
+    reloadPresets();
+    loadCoffees();
     if (isServer) return;
     if (usbSupported()) {
       navigator.usb.addEventListener('disconnect', (e) => {
@@ -878,9 +923,7 @@ function init() {
   state.order = DEFAULT_ORDER.slice();
   state.checked = new Set(DEFAULT_ORDER);
   buildOrderList();
-  reloadPresets();
   ensureFont();
-  loadCoffees();
 }
 
 document.addEventListener('DOMContentLoaded', init);
