@@ -63,6 +63,7 @@ const state = {
   qrType: 0,
   mode: 'usb',        // 'server' = 매장 인쇄 서버 경유 / 'usb' = 이 컴퓨터에 직접 연결
   device: null,
+  iface: 0,
   endpoint: 1,
   order: DEFAULT_ORDER.slice(),
   checked: new Set(DEFAULT_ORDER),
@@ -406,19 +407,27 @@ async function connectPrinter() {
   }
 }
 
-async function openDevice(dev) {
-  await dev.open();
-  if (!dev.configuration) await dev.selectConfiguration(1);
-
-  let ifaceNum = 0, endpoint = 1;
-  for (const iface of dev.configuration.interfaces) {
+/** 열지 않고도 알 수 있는 정보로 출력 엔드포인트를 찾는다 */
+function findEndpoint(dev) {
+  const cfg = dev.configuration || (dev.configurations && dev.configurations[0]);
+  for (const iface of (cfg?.interfaces || [])) {
     for (const alt of iface.alternates) {
       const out = alt.endpoints.find((e) => e.direction === 'out');
-      if (out) { ifaceNum = iface.interfaceNumber; endpoint = out.endpointNumber; break; }
+      if (out) return { iface: iface.interfaceNumber, endpoint: out.endpointNumber };
     }
   }
-  await dev.claimInterface(ifaceNum);
+  return { iface: 0, endpoint: 1 };
+}
+
+/**
+ * 장치를 기억만 해둔다 — 프린터를 붙잡지(claim) 않는다.
+ * 붙잡은 채로 두면 매장 앱·인쇄 서버가 프린터를 못 쓰게 되므로,
+ * 실제 점유는 인쇄하는 순간에만 한다.
+ */
+async function openDevice(dev) {
+  const { iface, endpoint } = findEndpoint(dev);
   state.device = dev;
+  state.iface = iface;
   state.endpoint = endpoint;
   markConnected(true);
 }
@@ -430,13 +439,37 @@ async function tryReconnect() {
   if (dev) { try { await openDevice(dev); } catch {} }
 }
 
-async function sendUSB(bytes) {
-  if (!state.device) throw new Error('프린터가 연결되지 않았어요. [프린터 연결]을 먼저 눌러주세요.');
-  const CHUNK = 4096;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    await state.device.transferOut(state.endpoint, bytes.slice(i, i + CHUNK));
+/**
+ * 인쇄할 때만 열고·붙잡고, 끝나면 즉시 놓아준다.
+ * jobs 안의 명령들은 한 번의 점유로 이어서 보낸다(연속 인쇄).
+ */
+async function sendUSBJobs(jobs, gapMs = 0) {
+  const dev = state.device;
+  if (!dev) throw new Error('프린터가 연결되지 않았어요. [프린터 연결]을 먼저 눌러주세요.');
+
+  if (!dev.opened) await dev.open();
+  if (!dev.configuration) await dev.selectConfiguration(1);
+  try {
+    await dev.claimInterface(state.iface);
+  } catch {
+    throw new Error('프린터를 다른 프로그램이 쓰고 있어요. 매장 앱이나 다른 브라우저 탭을 닫고 다시 해주세요.');
+  }
+  try {
+    const CHUNK = 4096;
+    for (let j = 0; j < jobs.length; j++) {
+      const bytes = jobs[j];
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        await dev.transferOut(state.endpoint, bytes.slice(i, i + CHUNK));
+      }
+      if (gapMs && j < jobs.length - 1) await sleep(gapMs);
+    }
+  } finally {
+    try { await dev.releaseInterface(state.iface); } catch {}
+    try { await dev.close(); } catch {}
   }
 }
+
+const sendUSB = (bytes) => sendUSBJobs([bytes]);
 
 function markConnected(on) {
   $('connectBtn').classList.toggle('on', on);
@@ -506,11 +539,10 @@ async function doPrint() {
         store.set(LS_CALIB, true);
       }
       const bytes = labelToRaster(buildOrder());
-      for (let i = 0; i < copies; i++) {
-        await sendUSB(bytes);
-        await sleep(300);
-      }
-      await sendUSB(ejectCommand());
+      const jobs = [];
+      for (let i = 0; i < copies; i++) jobs.push(bytes);
+      jobs.push(ejectCommand());
+      await sendUSBJobs(jobs, 300);   // 한 번 점유해서 연속 전송
     }
     setStatus(`✓ 인쇄 완료 (${copies}장)`);
   } catch (e) {
