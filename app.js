@@ -62,6 +62,7 @@ const state = {
   current: null,
   qrType: 0,
   mode: 'usb',        // 'server' = 매장 인쇄 서버 경유 / 'usb' = 이 컴퓨터에 직접 연결
+  aligned: false,     // 종이가 라벨 시작점에 맞춰져 있는지 (배출하면 깨짐)
   device: null,
   iface: 0,
   endpoint: 1,
@@ -389,12 +390,13 @@ const calibrateCommand = () =>
   new TextEncoder().encode('SIZE 30 mm,15 mm\r\nGAP 3 mm,0 mm\r\nCLS\r\nPRINT 1\r\n');
 
 /**
- * 인쇄 전 라벨 위치 자동 정렬 — '빈 이송 → 갭센서 캘리브' 순서.
+ * 인쇄 전 라벨 위치 자동 정렬 — 갭센서 캘리브 (빈 라벨 1장 소비).
  * 이 프린터는 래스터 인쇄 때 갭 센서를 쓰지 않아 위치가 어긋나고,
- * HOME·FORMFEED·BACKFEED·SET TEAR ON 은 듣지 않았다. (라벨 1장 소비)
+ * HOME·FORMFEED·BACKFEED·SET TEAR ON 은 듣지 않았다.
+ * ★ 핵심은 ALIGN_WAIT — 2000ms 로는 어긋나고 2500ms 에서 맞는다.
  */
 const ALIGN_WAIT = 2500;
-const alignJobs = () => [ejectCommand(), calibrateCommand()];
+const alignJobs = () => [calibrateCommand()];
 
 // ─────────── WebUSB ───────────
 function usbSupported() { return 'usb' in navigator; }
@@ -542,13 +544,16 @@ async function doPrint() {
       });
     } else {
       const bytes = labelToRaster(buildOrder());
-      // 정렬(빈 이송 → 캘리브) → 인쇄 → 배출 을 한 번의 점유로 이어서 전송
-      const jobs = alignJobs().map((data) => ({ data, wait: ALIGN_WAIT }));
+      const jobs = [];
+      // 정렬이 안 돼 있을 때만 캘리브 (빈 라벨 1장). 배출은 하지 않는다.
+      if (!state.aligned) {
+        for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
+      }
       for (let i = 0; i < copies; i++) jobs.push({ data: bytes, wait: 300 });
-      jobs.push(ejectCommand());
       await sendUSBJobs(jobs);
+      state.aligned = true;
     }
-    setStatus(`✓ 인쇄 완료 (${copies}장)`);
+    setStatus(`✓ 인쇄 완료 (${copies}장) · 뜯으려면 [배출]`);
   } catch (e) {
     setStatus('오류: ' + e.message);
   } finally { busy(false); }
@@ -559,6 +564,7 @@ async function doEject() {
   try {
     if (state.mode === 'server') await serverPost('eject');
     else await sendUSB(ejectCommand());
+    state.aligned = false;      // 배출하면 정렬이 깨진다
     setStatus('✓ 배출 완료');
   } catch (e) { setStatus('오류: ' + e.message); }
   finally { busy(false); }
@@ -571,8 +577,8 @@ async function doCalibrate() {
       await serverPost('calibrate');
     } else {
       await sendUSB(calibrateCommand());
-      store.set(LS_CALIB, true);
     }
+    state.aligned = true;
     setStatus('✓ 캘리브레이션 완료');
   } catch (e) { setStatus('오류: ' + e.message); }
   finally { busy(false); }
