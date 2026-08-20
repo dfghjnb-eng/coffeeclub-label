@@ -61,6 +61,7 @@ const state = {
   coffees: [],
   current: null,
   qrType: 0,
+  mode: 'usb',        // 'server' = 매장 인쇄 서버 경유 / 'usb' = 이 컴퓨터에 직접 연결
   device: null,
   endpoint: 1,
   order: DEFAULT_ORDER.slice(),
@@ -316,8 +317,8 @@ function render() {
   });
 }
 
-// ─────────── 비트맵 → ESC/POS 래스터 ───────────
-function labelToRaster(o) {
+// ─────────── 라벨 → 1비트 비트맵 ───────────
+function labelToBitmap(o) {
   const gapPx  = Math.round(GAP_MM * 203 / 25.4);   // 24
   const height = LH + gapPx;
 
@@ -348,7 +349,21 @@ function labelToRaster(o) {
       data[i++] = byte;
     }
   }
-  return rasterCommand(bytesPerRow, height, data);
+  return { data, height, bytesPerRow };
+}
+
+const labelToRaster = (o) => {
+  const b = labelToBitmap(o);
+  return rasterCommand(b.bytesPerRow, b.height, b.data);
+};
+
+function toBase64(bytes) {
+  let s = '';
+  const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+  }
+  return btoa(s);
 }
 
 function rasterCommand(bytesPerRow, height, data) {
@@ -428,23 +443,75 @@ function markConnected(on) {
   $('connectTxt').textContent = on ? '연결됨' : '프린터 연결';
 }
 
+// ─────────── 매장 인쇄 서버 (같은 와이파이) ───────────
+/** 이 페이지를 매장 서버가 서빙하고 있는지 확인 */
+async function detectServer() {
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 2500);
+    const res = await fetch('api/status', { signal: ctl.signal });
+    clearTimeout(timer);
+    if (!res.ok) return false;
+    const info = await res.json();
+    if (info.mode !== 'server') return false;
+
+    state.mode = 'server';
+    $('connectBtn').classList.add('on');
+    $('connectTxt').textContent = info.printer ? '매장 프린터' : '프린터 확인 필요';
+    $('connectBtn').onclick = refreshServerStatus;
+    $('hintText').innerHTML =
+      '<b>매장 인쇄 서버</b>에 연결됐습니다. 인쇄 버튼을 누르면 매장 맥에 연결된 ' +
+      'RP420에서 라벨이 나옵니다. 아이폰·안드로이드 모두 사용할 수 있어요.';
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function refreshServerStatus() {
+  try {
+    const info = await (await fetch('api/status')).json();
+    $('connectTxt').textContent = info.printer ? '매장 프린터' : '프린터 확인 필요';
+    setStatus(info.printer ? '✓ 매장 프린터 연결됨' : '매장 맥에서 프린터 USB를 확인해주세요.');
+  } catch { setStatus('매장 서버에 연결할 수 없어요.'); }
+}
+
+async function serverPost(path, body) {
+  const res = await fetch('api/' + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  let info = {};
+  try { info = await res.json(); } catch {}
+  if (!res.ok || !info.ok) throw new Error(info.error || `서버 오류 (${res.status})`);
+  return info;
+}
+
 // ─────────── 인쇄 동작 ───────────
 async function doPrint() {
   if (!$('roasting').value.trim()) { setStatus('로스팅 포인트를 입력해주세요.'); return; }
   const copies = Math.max(1, Math.round(getStep('copies')));
   busy(true, '인쇄 중…');
   try {
-    if (!store.get(LS_CALIB, false)) {
-      await sendUSB(calibrateCommand());
-      await sleep(1500);
-      store.set(LS_CALIB, true);
+    if (state.mode === 'server') {
+      const bmp = labelToBitmap(buildOrder());
+      await serverPost('print', {
+        data: toBase64(bmp.data), height: bmp.height, copies,
+      });
+    } else {
+      if (!store.get(LS_CALIB, false)) {
+        await sendUSB(calibrateCommand());
+        await sleep(1500);
+        store.set(LS_CALIB, true);
+      }
+      const bytes = labelToRaster(buildOrder());
+      for (let i = 0; i < copies; i++) {
+        await sendUSB(bytes);
+        await sleep(300);
+      }
+      await sendUSB(ejectCommand());
     }
-    const bytes = labelToRaster(buildOrder());
-    for (let i = 0; i < copies; i++) {
-      await sendUSB(bytes);
-      await sleep(300);
-    }
-    await sendUSB(ejectCommand());
     setStatus(`✓ 인쇄 완료 (${copies}장)`);
   } catch (e) {
     setStatus('오류: ' + e.message);
@@ -453,16 +520,23 @@ async function doPrint() {
 
 async function doEject() {
   busy(true, '배출 중…');
-  try { await sendUSB(ejectCommand()); setStatus('✓ 배출 완료'); }
-  catch (e) { setStatus('오류: ' + e.message); }
+  try {
+    if (state.mode === 'server') await serverPost('eject');
+    else await sendUSB(ejectCommand());
+    setStatus('✓ 배출 완료');
+  } catch (e) { setStatus('오류: ' + e.message); }
   finally { busy(false); }
 }
 
 async function doCalibrate() {
   busy(true, '캘리브레이션 중… (라벨 1장 소비)');
   try {
-    await sendUSB(calibrateCommand());
-    store.set(LS_CALIB, true);
+    if (state.mode === 'server') {
+      await serverPost('calibrate');
+    } else {
+      await sendUSB(calibrateCommand());
+      store.set(LS_CALIB, true);
+    }
     setStatus('✓ 캘리브레이션 완료');
   } catch (e) { setStatus('오류: ' + e.message); }
   finally { busy(false); }
@@ -740,14 +814,24 @@ function init() {
   $('ejectBtn').onclick = doEject;
   $('calibBtn').onclick = doCalibrate;
 
-  if (usbSupported()) {
-    navigator.usb.addEventListener('disconnect', (e) => {
-      if (e.device === state.device) { state.device = null; markConnected(false); setStatus('프린터 연결이 끊어졌어요.'); }
-    });
-    tryReconnect();
-  } else {
-    $('connectTxt').textContent = 'Chrome 필요';
-  }
+  // 매장 인쇄 서버가 서빙 중이면 서버 모드, 아니면 이 컴퓨터의 USB(WebUSB) 모드
+  detectServer().then((isServer) => {
+    if (isServer) return;
+    if (usbSupported()) {
+      navigator.usb.addEventListener('disconnect', (e) => {
+        if (e.device === state.device) {
+          state.device = null; markConnected(false);
+          setStatus('프린터 연결이 끊어졌어요.');
+        }
+      });
+      tryReconnect();
+    } else {
+      $('connectTxt').textContent = '인쇄 불가';
+      $('hintText').innerHTML =
+        '이 브라우저에서는 <b>편집·미리보기만</b> 가능합니다. 인쇄하려면 매장 맥에서 ' +
+        '<b>폰인쇄서버</b>를 켠 뒤 그 주소로 접속하거나, 프린터가 연결된 컴퓨터의 Chrome에서 열어주세요.';
+    }
+  });
 
   state.order = DEFAULT_ORDER.slice();
   state.checked = new Set(DEFAULT_ORDER);
