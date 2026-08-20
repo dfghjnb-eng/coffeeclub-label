@@ -63,6 +63,7 @@ const state = {
   qrType: 0,
   mode: 'usb',        // 'server' = 매장 인쇄 서버 경유 / 'usb' = 이 컴퓨터에 직접 연결
   aligned: false,     // 종이가 라벨 시작점에 맞춰져 있는지 (배출하면 깨짐)
+  preset: null,       // 지금 수정 중인 프리셋 이름 (저장하면 여기에 덮어쓴다)
   device: null,
   iface: 0,
   endpoint: 1,
@@ -749,7 +750,17 @@ async function reloadPresets() {
     o.value = name; o.textContent = name;
     sel.appendChild(o);
   }
-  if (keep && presets[keep]) sel.value = keep;
+  const want = state.preset || keep;
+  if (want && presets[want]) sel.value = want;
+}
+
+/** 지금 어떤 프리셋을 수정 중인지 버튼에 표시 */
+function markPreset() {
+  const sel = $('presetSelect');
+  if (sel.value !== (state.preset || '')) sel.value = state.preset || '';
+  const btn = $('presetSave');
+  btn.textContent = state.preset ? '수정' : '저장';
+  btn.title = state.preset ? `[${state.preset}] 에 덮어쓰기` : '새 프리셋으로 저장';
 }
 
 // ─────────── 표시설정 리스트 (드래그 순서) ───────────
@@ -819,8 +830,31 @@ function syncDateInput() {
   $('dateInput').disabled = !$('dateCheck').checked;
 }
 
+/**
+ * 폰 확대/축소 잠금
+ * iOS Safari는 user-scalable=no 를 무시하므로 제스처를 직접 막는다.
+ * 위아래 스크롤(pan-y)은 CSS 쪽에서 그대로 허용한다.
+ */
+function lockZoom() {
+  for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) {
+    document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+  }
+  // 두 손가락 벌리기 차단
+  document.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 1) e.preventDefault();
+  }, { passive: false });
+  // 더블탭 확대 차단
+  let lastTouch = 0;
+  document.addEventListener('touchend', (e) => {
+    const now = Date.now();
+    if (now - lastTouch <= 320) e.preventDefault();
+    lastTouch = now;
+  }, { passive: false });
+}
+
 // ─────────── 초기화 ───────────
 function init() {
+  lockZoom();
   // 폰트 셀렉트
   const fs = $('fontSelect');
   for (const name of Object.keys(FONTS)) {
@@ -862,35 +896,52 @@ function init() {
 
   $('presetSelect').onchange = async (e) => {
     const name = e.target.value;
-    if (!name) return;
+    if (!name) { state.preset = null; markPreset(); return; }
     const presets = await remote.load('presets');
-    if (presets[name] != null) { $('customText').value = presets[name]; render(); }
-    e.target.value = '';
+    if (presets[name] != null) {
+      $('customText').value = presets[name];
+      state.preset = name;          // 이 프리셋을 수정 중 → 저장하면 여기에 덮어쓴다
+      markPreset();
+      render();
+    }
   };
   // 목록을 펼칠 때마다 최신 프리셋을 다시 읽는다 (맥에서 방금 추가한 것도 보이도록)
   $('presetSelect').onmousedown = () => { reloadPresets(); };
+  // 저장: 불러온 프리셋이 있으면 이름을 묻지 않고 바로 그 프리셋에 덮어쓴다
   $('presetSave').onclick = async () => {
     const text = $('customText').value.trim();
     if (!text) { setStatus('저장할 텍스트를 먼저 입력해주세요.'); return; }
-    const name = prompt('프리셋 이름을 입력하세요:');
-    if (!name || !name.trim()) return;
+
+    let name = state.preset;
+    if (!name) {
+      const typed = prompt('프리셋 이름을 입력하세요:');
+      if (!typed || !typed.trim()) return;
+      name = typed.trim();
+    }
     const presets = await remote.load('presets');
-    presets[name.trim()] = text;
+    const isUpdate = presets[name] != null;
+    presets[name] = text;
     await remote.save('presets', presets);
+    state.preset = name;
     await reloadPresets();
-    setStatus(`✓ 프리셋 [${name.trim()}] 저장됨`
-              + (state.mode === 'server' ? ' (매장 맥에 저장됨)' : ''));
+    markPreset();
+    setStatus(`✓ [${name}] ${isUpdate ? '수정 저장됨' : '새 프리셋 저장됨'}`
+              + (state.mode === 'server' ? ' · 매장 맥' : ''));
   };
   $('presetDel').onclick = async () => {
     const presets = await remote.load('presets');
     const names = Object.keys(presets);
     if (!names.length) { setStatus('저장된 프리셋이 없습니다.'); return; }
-    const name = prompt(`삭제할 프리셋 이름:\n\n${names.join(', ')}`);
-    if (!name || !presets[name]) return;
-    delete presets[name];
+    // 불러온 프리셋이 있으면 그걸 지운다
+    const target = state.preset || prompt(`삭제할 프리셋 이름:\n\n${names.join(', ')}`);
+    if (!target || presets[target] == null) return;
+    if (!confirm(`프리셋 [${target}] 을(를) 삭제할까요?`)) return;
+    delete presets[target];
     await remote.save('presets', presets);
+    state.preset = null;
     await reloadPresets();
-    setStatus(`✓ 프리셋 [${name}] 삭제됨`);
+    markPreset();
+    setStatus(`✓ 프리셋 [${target}] 삭제됨`);
   };
 
   $('connectBtn').onclick = connectPrinter;
@@ -901,7 +952,7 @@ function init() {
   // 매장 인쇄 서버가 서빙 중이면 서버 모드, 아니면 이 컴퓨터의 USB(WebUSB) 모드
   // 모드가 정해진 뒤에 프리셋·커피 목록을 읽어야 매장 맥의 파일을 가져온다
   detectServer().then((isServer) => {
-    reloadPresets();
+    reloadPresets().then(markPreset);
     loadCoffees();
     if (isServer) return;
     if (usbSupported()) {

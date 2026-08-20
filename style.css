@@ -22,6 +22,22 @@
 /* ─────────── 기본 ─────────── */
 * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
 
+/* 폰: 확대/축소 잠금 — 위아래 스크롤만 허용.
+   버튼을 눌러도 더블탭 확대나 화면 흔들림이 생기지 않는다. */
+html {
+  touch-action:pan-y;
+  -webkit-text-size-adjust:100%;
+  text-size-adjust:100%;
+  overscroll-behavior-y:none;      /* 위아래 끝에서 튕기며 흔들리는 것 방지 */
+}
+body { touch-action:pan-y; }
+button, select, label, .seg button, .pill, .btn {
+  touch-action:manipulation;       /* 더블탭 확대 없이 즉시 반응 */
+}
+/* 글자 선택으로 인한 확대 메뉴 방지 (입력란은 예외) */
+button, label, .sec, .grip, .top h1 { -webkit-user-select:none; user-select:none; }
+input, textarea, .flavor { -webkit-user-select:text; user-select:text; }
+
 :root {
   --ink:      #1d1d1f;
   --ink-sub:  #5a5a5f;
@@ -215,4 +231,9 @@ input:disabled { background:#f2f2f4; color:#aeaeb2; border-color:transparent; }
   body { padding:16px 10px 48px; }
   .steps { grid-template-columns:1fr; }
   .card { padding:15px; border-radius:20px; }
+
+  /* iOS는 글자 16px 미만 입력란을 누르면 화면을 확대해버린다 → 16px 이상 유지 */
+  input[type=text], input[type=search], select, textarea { font-size:16px; }
+  .step input { font-size:16px; width:58px; }
+  #presetSelect { font-size:16px !important; }
 }
