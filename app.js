@@ -763,19 +763,35 @@ function markPreset() {
   btn.title = state.preset ? `[${state.preset}] 에 덮어쓰기` : '새 프리셋으로 저장';
 }
 
-// ─────────── 표시설정 리스트 (드래그 순서) ───────────
+// ─────────── 표시설정 리스트 (순서 변경) ───────────
+/** 손가락으로도 쓸 수 있게 ▲▼ 버튼으로 한 칸씩 이동 */
+function moveOrder(key, dir) {
+  const i = state.order.indexOf(key);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= state.order.length) return;
+  [state.order[i], state.order[j]] = [state.order[j], state.order[i]];
+  buildOrderList();
+  render();
+}
+
 function buildOrderList() {
   const ul = $('orderList');
   ul.innerHTML = '';
-  for (const key of state.order) {
+  state.order.forEach((key, idx) => {
     const li = document.createElement('li');
-    li.draggable = true;
+    li.draggable = true;        // 데스크톱에서는 드래그도 그대로 쓸 수 있게
     li.dataset.key = key;
     li.innerHTML =
-      `<span class="grip">⠿</span>` +
       `<label class="chk"><input type="checkbox" ${state.checked.has(key) ? 'checked' : ''}>` +
       `<span class="box"></span></label>` +
-      `<span class="name">${ORDER_LABELS[key]}</span>`;
+      `<span class="name">${ORDER_LABELS[key]}</span>` +
+      `<span class="move">` +
+      `<button type="button" class="up" ${idx === 0 ? 'disabled' : ''} aria-label="위로">▲</button>` +
+      `<button type="button" class="down" ${idx === state.order.length - 1 ? 'disabled' : ''} aria-label="아래로">▼</button>` +
+      `</span>`;
+
+    li.querySelector('.up').onclick   = () => moveOrder(key, -1);
+    li.querySelector('.down').onclick = () => moveOrder(key, +1);
 
     li.querySelector('input').onchange = (e) => {
       e.target.checked ? state.checked.add(key) : state.checked.delete(key);
@@ -805,7 +821,7 @@ function buildOrderList() {
       render();
     });
     ul.appendChild(li);
-  }
+  });
 }
 
 // ─────────── QR 세그먼트 ───────────

@@ -163,6 +163,7 @@ input:disabled { background:#f2f2f4; color:#aeaeb2; border-color:transparent; }
   border:1px solid var(--line); background:#fff; color:var(--ink-mute);
   border-radius:16px; padding:11px 4px; font-size:13px; font-weight:600;
   font-family:inherit; cursor:pointer; transition:.15s;
+  word-break:keep-all; line-height:1.35;   /* '네이버 스토어'가 낱글자로 잘리지 않게 */
 }
 .seg button:hover { background:var(--hover); color:var(--ink); }
 .seg button.on { background:#1e1e1e; color:#fff; border-color:#1e1e1e; }
@@ -188,15 +189,27 @@ input:disabled { background:#f2f2f4; color:#aeaeb2; border-color:transparent; }
 #orderList { list-style:none; background:#fff; border:1px solid var(--line);
   border-radius:16px; padding:6px; }
 #orderList li {
-  display:flex; align-items:center; gap:10px;
-  padding:8px 10px; border-radius:10px; font-size:14px;
-  cursor:grab; transition:background .12s;
+  display:flex; align-items:center; gap:12px;
+  padding:10px 12px; border-radius:12px; font-size:15px;
+  min-height:52px; transition:background .12s;
 }
-#orderList li:hover { background:#f5f5f7; }
+#orderList li + li { border-top:1px solid #f4f4f6; }
+#orderList li:hover { background:#f9f9fb; }
 #orderList li.drag { opacity:.35; }
 #orderList li.over { background:#eceef2; }
-#orderList .grip { color:#c7c7cc; font-size:13px; letter-spacing:-1px; flex:none; }
 #orderList .name { flex:1; }
+
+/* 위·아래 이동 버튼 — 손가락으로 누르기 좋은 크기 */
+#orderList .move { display:flex; gap:6px; flex:none; }
+#orderList .move button {
+  width:42px; height:38px; padding:0;
+  border:1px solid var(--line); background:#fff; color:var(--ink-sub);
+  border-radius:11px; font-size:12px; font-family:inherit; cursor:pointer;
+  transition:.12s; touch-action:manipulation;
+}
+#orderList .move button:hover:not(:disabled) { background:var(--hover); }
+#orderList .move button:active:not(:disabled) { background:#1e1e1e; color:#fff; }
+#orderList .move button:disabled { color:#dcdce0; border-color:#f0f0f2; cursor:default; }
 
 /* 미리보기 */
 .preview {
@@ -227,13 +240,48 @@ input:disabled { background:#f2f2f4; color:#aeaeb2; border-color:transparent; }
 
 .hide { display:none !important; }
 
+/* ─────────── 폰: 손가락으로 쓰기 좋게 전체를 키운다 ─────────── */
 @media (max-width:480px) {
-  body { padding:16px 10px 48px; }
-  .steps { grid-template-columns:1fr; }
-  .card { padding:15px; border-radius:20px; }
+  body { padding:16px 10px 56px; }
+  .steps { grid-template-columns:1fr; gap:14px; }
+  .card { padding:16px; border-radius:20px; margin-bottom:16px; }
+  .card-hd { margin-bottom:14px; }
 
   /* iOS는 글자 16px 미만 입력란을 누르면 화면을 확대해버린다 → 16px 이상 유지 */
-  input[type=text], input[type=search], select, textarea { font-size:16px; }
-  .step input { font-size:16px; width:58px; }
-  #presetSelect { font-size:16px !important; }
+  input[type=text], input[type=search], select, textarea { font-size:16px; padding:14px 16px; }
+  select { padding-right:40px; }
+  textarea { min-height:96px; }
+  #presetSelect { font-size:15px !important; height:38px; padding:0 32px 0 14px; }
+
+  /* 스텝 스핀박스 — 화살표를 크게 */
+  .step { gap:8px; }
+  .step label { width:74px; font-size:13px; }
+  .step input { font-size:16px; width:66px; padding:10px 0; }
+  .step .arrows { gap:4px; }
+  .step .arrows button { width:44px; height:26px; font-size:10px; }
+
+  /* 알약 버튼 */
+  .pill { height:38px; padding:0 20px; font-size:14px; }
+  .pill.mini { padding:0 14px; }
+  #connectBtn { height:40px; font-size:14px; }
+
+  /* 체크박스 — 누르기 쉽게 */
+  .chk { padding:8px 0; font-size:15px; }
+  .chk .box { width:24px; height:24px; border-radius:12px; }
+  .chk .box::after { width:7px; height:12px; }
+
+  /* 순서 리스트 */
+  #orderList li { min-height:60px; font-size:16px; padding:10px 12px; }
+  #orderList .move button { width:48px; height:44px; font-size:13px; }
+
+  /* 세그먼트·주요 버튼 */
+  .seg { gap:7px; }
+  .seg button { padding:13px 6px; font-size:13.5px; min-height:62px; }
+  .btn { padding:17px 8px; font-size:15px; }
+  .btn.primary { font-size:17px; }
+  .btn.slim { width:84px; font-size:14px; }
+  .actions { gap:8px; }
+
+  .flavor { font-size:14px; padding:12px 14px; }
+  #status { font-size:13px; margin-top:14px; }
 }
