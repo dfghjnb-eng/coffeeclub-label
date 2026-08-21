@@ -80,12 +80,46 @@ const store = {
 /**
  * 프리셋·설정 저장소
  *
- * 매장 서버에 연결돼 있으면 맥의 파일을 그대로 쓴다.
- * → 데스크톱 앱에서 저장한 프리셋·설정이 폰에서도 그대로 보이고, 반대도 마찬가지.
- * 서버가 없으면(GitHub Pages 등) 브라우저 저장소를 쓴다.
+ * 1순위 Supabase — 맥·폰·GitHub 주소 어디서 등록하든 같은 값을 본다.
+ * 2순위 매장 서버(맥 파일) — Supabase가 안 될 때.
+ * 3순위 브라우저 저장소 — 둘 다 안 될 때(오프라인).
  */
+const SB_HEAD = {
+  apikey: SUPABASE_ANON,
+  Authorization: `Bearer ${SUPABASE_ANON}`,
+  'Content-Type': 'application/json',
+};
+const SB_TABLE = { presets: 'label_presets', settings: 'label_settings' };
+
 const remote = {
+  /** Supabase 행 목록 → {키: 값} 형태로 */
+  _toMap(kind, rows) {
+    const map = {};
+    for (const r of rows) {
+      if (kind === 'presets') map[r.name] = r.content;
+      else map[r.coffee_id] = r.data;
+    }
+    return map;
+  },
+
+  async _sbLoad(kind) {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/${SB_TABLE[kind]}?select=*`,
+      { headers: SB_HEAD },
+    );
+    if (!res.ok) throw new Error('supabase ' + res.status);
+    return this._toMap(kind, await res.json());
+  },
+
   async load(kind) {                       // kind: 'presets' | 'settings'
+    try {
+      const map = await this._sbLoad(kind);
+      state.cloud = true;
+      store.set(kind === 'presets' ? LS_PRESETS : LS_SETTINGS, map);   // 오프라인 대비 캐시
+      return map;
+    } catch {
+      state.cloud = false;
+    }
     if (state.mode === 'server') {
       try {
         const info = await (await fetch('api/' + kind)).json();
@@ -94,6 +128,46 @@ const remote = {
     }
     return store.get(kind === 'presets' ? LS_PRESETS : LS_SETTINGS, {}) || {};
   },
+
+  /** 바뀐 항목 하나만 올린다 (통째로 덮어쓰면 다른 기기 작업을 지운다) */
+  async saveOne(kind, key, value) {
+    const row = kind === 'presets'
+      ? { name: key, content: value, updated_at: new Date().toISOString() }
+      : { coffee_id: key, data: value, updated_at: new Date().toISOString() };
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/${SB_TABLE[kind]}`, {
+        method: 'POST',
+        headers: { ...SB_HEAD, Prefer: 'resolution=merge-duplicates' },
+        body: JSON.stringify(row),
+      });
+      if (!res.ok) throw new Error('supabase ' + res.status);
+      state.cloud = true;
+      return;
+    } catch {
+      state.cloud = false;
+    }
+    // Supabase가 안 되면 기존 방식으로
+    const all = await this.load(kind);
+    all[key] = value;
+    await this.save(kind, all);
+  },
+
+  async deleteOne(kind, key) {
+    const col = kind === 'presets' ? 'name' : 'coffee_id';
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/${SB_TABLE[kind]}?${col}=eq.${encodeURIComponent(key)}`,
+        { method: 'DELETE', headers: SB_HEAD },
+      );
+      if (!res.ok) throw new Error('supabase ' + res.status);
+      return;
+    } catch {}
+    const all = await this.load(kind);
+    delete all[key];
+    await this.save(kind, all);
+  },
+
+  /** 통째로 저장 (폴백 경로 전용) */
   async save(kind, data) {
     if (state.mode === 'server') {
       try {
@@ -753,8 +827,7 @@ async function loadSettings(id) {
 async function saveSettings() {
   const id = state.current?.id;
   if (!id) { setStatus('커피를 먼저 선택해주세요.'); return; }
-  const all = await remote.load('settings');
-  all[id] = {
+  const entry = {
     roasting:    $('roasting').value.trim(),
     font:        $('fontSelect').value,
     date_check:  $('dateCheck').checked,
@@ -768,7 +841,7 @@ async function saveSettings() {
     element_checked: [...state.checked],
     show_qr: $('visQR').checked, show_details: $('visDetails').checked,
   };
-  await remote.save('settings', all);
+  await remote.saveOne('settings', id, entry);
   setStatus(`✓ [${state.current.name}] 설정 저장 완료`
             + (state.mode === 'server' ? ' (매장 맥에 저장됨)' : ''));
 }
@@ -976,8 +1049,7 @@ function init() {
     }
     const presets = await remote.load('presets');
     const isUpdate = presets[name] != null;
-    presets[name] = text;
-    await remote.save('presets', presets);
+    await remote.saveOne('presets', name, text);
     state.preset = name;
     await reloadPresets();
     markPreset();
@@ -992,8 +1064,7 @@ function init() {
     const target = state.preset || prompt(`삭제할 프리셋 이름:\n\n${names.join(', ')}`);
     if (!target || presets[target] == null) return;
     if (!confirm(`프리셋 [${target}] 을(를) 삭제할까요?`)) return;
-    delete presets[target];
-    await remote.save('presets', presets);
+    await remote.deleteOne('presets', target);
     state.preset = null;
     await reloadPresets();
     markPreset();
