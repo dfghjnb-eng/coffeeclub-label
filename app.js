@@ -443,6 +443,19 @@ function ejectCommand() {
   return rasterCommand(bytesPerRow, rows, new Uint8Array(bytesPerRow * rows));
 }
 
+/**
+ * 연속 인쇄 피치 보정
+ * 한 장에 144 dots(18.02mm)를 보내는데 실제 라벨 피치가 그보다 조금 크다.
+ * 보정하지 않으면 장이 넘어갈수록 인쇄가 위로 밀려 위쪽이 잘린다.
+ * 실기 테스트에서 장당 +1 dot 이 정확했다.
+ */
+const PITCH_ADJUST = 1;
+function pitchFeedCommand() {
+  const bytesPerRow = W_FULL / 8;
+  return rasterCommand(bytesPerRow, PITCH_ADJUST,
+                       new Uint8Array(bytesPerRow * PITCH_ADJUST));
+}
+
 const calibrateCommand = () =>
   new TextEncoder().encode('SIZE 30 mm,15 mm\r\nGAP 3 mm,0 mm\r\nCLS\r\nPRINT 1\r\n');
 
@@ -606,7 +619,10 @@ async function doPrint() {
       if (!state.aligned) {
         for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
       }
-      for (let i = 0; i < copies; i++) jobs.push({ data: bytes, wait: 300 });
+      for (let i = 0; i < copies; i++) {
+        jobs.push({ data: bytes });
+        if (PITCH_ADJUST) jobs.push({ data: pitchFeedCommand(), wait: 300 });
+      }
       await sendUSBJobs(jobs);
       state.aligned = true;
     }
@@ -995,6 +1011,11 @@ function init() {
     reloadPresets().then(markPreset);
     loadCoffees();
     if (isServer) return;
+    // 매장 서버가 아니면 맥에 저장된 프리셋·설정을 가져올 수 없다
+    const offsite =
+      '<b>매장 맥에 연결돼 있지 않습니다.</b> 그래서 맥에 저장한 <b>프리셋과 커피별 설정이 보이지 않습니다.</b><br>' +
+      '매장에서 쓰시려면 앱의 <b>폰에서 인쇄</b>를 켜고 거기 표시된 주소(<code>…:9110</code>)로 접속하세요.';
+
     if (usbSupported()) {
       navigator.usb.addEventListener('disconnect', (e) => {
         if (e.device === state.device) {
@@ -1003,11 +1024,12 @@ function init() {
         }
       });
       tryReconnect();
+      $('hintText').innerHTML = offsite +
+        '<br><br>이 컴퓨터에 프린터가 USB로 꽂혀 있다면 <b>프린터 연결</b>을 눌러 바로 인쇄할 수 있습니다.';
     } else {
       $('connectTxt').textContent = '인쇄 불가';
-      $('hintText').innerHTML =
-        '이 브라우저에서는 <b>편집·미리보기만</b> 가능합니다. 인쇄하려면 매장 맥에서 ' +
-        '<b>폰인쇄서버</b>를 켠 뒤 그 주소로 접속하거나, 프린터가 연결된 컴퓨터의 Chrome에서 열어주세요.';
+      $('hintText').innerHTML = offsite +
+        '<br><br>이 브라우저에서는 <b>편집·미리보기만</b> 됩니다.';
     }
   });
 
