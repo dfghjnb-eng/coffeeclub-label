@@ -126,6 +126,17 @@ const remote = {
         if (info.ok) return info[kind] || {};
       } catch {}
     }
+    // 저장소에 함께 올려둔 사본 — GitHub 주소에서도 맥의 프리셋을 볼 수 있게 한다
+    try {
+      const res = await fetch(`data/${kind}.json`, { cache: 'no-cache' });
+      if (res.ok) {
+        const map = await res.json();
+        if (map && Object.keys(map).length) {
+          const local = store.get(kind === 'presets' ? LS_PRESETS : LS_SETTINGS, {}) || {};
+          return { ...map, ...local };     // 이 기기에서 추가한 것이 우선
+        }
+      }
+    } catch {}
     return store.get(kind === 'presets' ? LS_PRESETS : LS_SETTINGS, {}) || {};
   },
 
@@ -146,10 +157,17 @@ const remote = {
     } catch {
       state.cloud = false;
     }
-    // Supabase가 안 되면 기존 방식으로
-    const all = await this.load(kind);
-    all[key] = value;
-    await this.save(kind, all);
+    // Supabase가 안 되면: 매장 서버가 있으면 맥 파일에, 없으면 이 기기에만 기록
+    if (state.mode === 'server') {
+      const all = await this.load(kind);
+      all[key] = value;
+      await this.save(kind, all);
+      return;
+    }
+    const LS = kind === 'presets' ? LS_PRESETS : LS_SETTINGS;
+    const local = store.get(LS, {}) || {};
+    local[key] = value;
+    store.set(LS, local);
   },
 
   async deleteOne(kind, key) {
@@ -162,9 +180,16 @@ const remote = {
       if (!res.ok) throw new Error('supabase ' + res.status);
       return;
     } catch {}
-    const all = await this.load(kind);
-    delete all[key];
-    await this.save(kind, all);
+    if (state.mode === 'server') {
+      const all = await this.load(kind);
+      delete all[key];
+      await this.save(kind, all);
+      return;
+    }
+    const LS = kind === 'presets' ? LS_PRESETS : LS_SETTINGS;
+    const local = store.get(LS, {}) || {};
+    delete local[key];
+    store.set(LS, local);
   },
 
   /** 통째로 저장 (폴백 경로 전용) */
