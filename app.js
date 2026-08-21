@@ -135,6 +135,30 @@ function makeStep(parent, key, label, val, min, max, step, decimals) {
     render();
   };
   input.oninput = () => { if (Number.isFinite(parseFloat(input.value))) render(); };
+
+  // ── 폰: 숫자 위에서 위아래로 쓸어 값 조절 ──
+  // 살짝 톡 치면 그대로 키보드 입력, 끌면 값이 바뀐다.
+  const STEP_PX = 9;          // 이만큼 끌 때마다 한 칸
+  let sy = 0, sv = 0, dragging = false, moved = false;
+  input.addEventListener('touchstart', (e) => {
+    sy = e.touches[0].clientY;
+    sv = getStep(key);
+    dragging = true; moved = false;
+  }, { passive: true });
+  input.addEventListener('touchmove', (e) => {
+    if (!dragging) return;
+    const dy = sy - e.touches[0].clientY;      // 위로 끌면 +
+    if (!moved && Math.abs(dy) < 6) return;    // 탭과 구분
+    moved = true;
+    e.preventDefault();                        // 페이지가 같이 움직이지 않게
+    input.blur();                              // 끄는 중에는 키보드가 뜨지 않게
+    setV(sv + Math.round(dy / STEP_PX) * step);
+    render();
+  }, { passive: false });
+  const endDrag = () => { dragging = false; };
+  input.addEventListener('touchend', endDrag);
+  input.addEventListener('touchcancel', endDrag);
+
   return input;
 }
 const getStep = (key) => {

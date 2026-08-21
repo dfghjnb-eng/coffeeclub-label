@@ -240,6 +240,10 @@ input:disabled { background:#f2f2f4; color:#aeaeb2; border-color:transparent; }
 
 .hide { display:none !important; }
 
+/* 스와이프 안내는 터치 기기에서만 */
+.swipe-tip { display:none; font-size:11px; color:#a1a1a6; }
+@media (pointer:coarse) { .swipe-tip { display:inline; } }
+
 /* ─────────── 폰: 손가락으로 쓰기 좋게 전체를 키운다 ─────────── */
 @media (max-width:480px) {
   body { padding:16px 10px 56px; }
@@ -253,10 +257,14 @@ input:disabled { background:#f2f2f4; color:#aeaeb2; border-color:transparent; }
   textarea { min-height:96px; }
   #presetSelect { font-size:15px !important; height:38px; padding:0 32px 0 14px; }
 
-  /* 스텝 스핀박스 — 화살표를 크게 */
+  /* 스텝 스핀박스 — 화살표를 크게, 숫자는 위아래로 쓸어서 조절 */
   .step { gap:8px; }
   .step label { width:74px; font-size:13px; }
-  .step input { font-size:16px; width:66px; padding:10px 0; }
+  .step input {
+    font-size:17px; width:76px; padding:13px 0; font-weight:700;
+    touch-action:none;                      /* 위아래 쓸기를 값 조절로 쓴다 */
+    background:linear-gradient(#fff, #fafafb);
+  }
   .step .arrows { gap:4px; }
   .step .arrows button { width:44px; height:26px; font-size:10px; }
 
