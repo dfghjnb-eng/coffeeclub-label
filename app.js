@@ -65,6 +65,7 @@ const state = {
   qrType: 0,
   mode: 'usb',        // 'server' = 매장 인쇄 서버 경유 / 'usb' = 이 컴퓨터에 직접 연결
   aligned: false,     // 종이가 라벨 시작점에 맞춰져 있는지 (배출하면 깨짐)
+  ejectedDots: 0,     // 배출로 앞으로 밀어낸 양 — 되감을 때 더해야 한다
   preset: null,       // 지금 수정 중인 프리셋 이름 (저장하면 여기에 덮어쓴다)
   device: null,
   iface: 0,
@@ -573,8 +574,16 @@ const calibrateCommand = () =>
  */
 const ALIGN_WAIT = 2500;
 const BACKFEED_AFTER_ALIGN = 312;
+// 배출한 뒤에는 종이가 더 나가 있어 그만큼(+보정) 더 되감아야 한다.
+// 배출 이송량 112만 더하면 4.5mm 밀려서 36을 더한다. 둘 다 실기로 찾은 값.
+const EJECT_BACKFEED_EXTRA = 36;
 const backfeedCommand = (dots) => new TextEncoder().encode(`BACKFEED ${dots}\r\n`);
-const alignJobs = () => [calibrateCommand(), backfeedCommand(BACKFEED_AFTER_ALIGN)];
+const alignJobs = () => {
+  let back = BACKFEED_AFTER_ALIGN + state.ejectedDots;
+  if (state.ejectedDots) back += EJECT_BACKFEED_EXTRA;
+  state.ejectedDots = 0;
+  return [calibrateCommand(), backfeedCommand(back)];
+};
 
 // ─────────── WebUSB ───────────
 function usbSupported() { return 'usb' in navigator; }
@@ -746,6 +755,7 @@ async function doEject() {
     if (state.mode === 'server') await serverPost('eject');
     else await sendUSB(ejectCommand());
     state.aligned = false;      // 배출하면 정렬이 깨진다
+    state.ejectedDots += Math.max(1, LH + Math.round(GAP_MM * 203 / 25.4) - 32);
     setStatus('✓ 배출 완료');
   } catch (e) { setStatus('오류: ' + e.message); }
   finally { busy(false); }
