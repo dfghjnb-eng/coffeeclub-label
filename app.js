@@ -17,7 +17,9 @@ const SUPABASE_ANON =
 const USB_VENDOR  = 0x0FE6;
 const USB_PRODUCT = 0x811E;
 const W_FULL  = 600;      // 헤드 전체 폭 (dots)
-const LABEL_X = 130;      // 라벨 좌측 오프셋
+// 라벨 가로 위치 (dots). 1mm = 8 dots, 줄이면 종이 나오는 방향 기준 왼쪽으로 이동.
+// 실기 확인: 130에서 오른쪽으로 0.5mm 치우쳐 126으로 맞췄다.
+const LABEL_X = 126;
 const LW = 240, LH = 120; // 라벨 30mm × 15mm
 const GAP_MM = 3.0;
 
@@ -559,13 +561,20 @@ const calibrateCommand = () =>
   new TextEncoder().encode('SIZE 30 mm,15 mm\r\nGAP 3 mm,0 mm\r\nCLS\r\nPRINT 1\r\n');
 
 /**
- * 인쇄 전 라벨 위치 자동 정렬 — 갭센서 캘리브 (빈 라벨 1장 소비).
- * 이 프린터는 래스터 인쇄 때 갭 센서를 쓰지 않아 위치가 어긋나고,
- * HOME·FORMFEED·BACKFEED·SET TEAR ON 은 듣지 않았다.
- * ★ 핵심은 ALIGN_WAIT — 2000ms 로는 어긋나고 2500ms 에서 맞는다.
+ * 인쇄 전 라벨 위치 자동 정렬 (버려지는 라벨 없음)
+ *
+ * 이 프린터는 래스터 인쇄 때 갭 센서를 쓰지 않아 위치가 어긋난다.
+ * 갭센서 캘리브(CLS+PRINT 1)만 정확히 맞고, 그때 빈 라벨이 한 장 밀려나오는데
+ * BACKFEED 로 되감아 그 라벨을 그대로 다시 쓴다.
+ *
+ * ★ 두 값 모두 실기로 찾은 것 — 바꾸려면 실제로 인쇄해 확인할 것.
+ *   · ALIGN_WAIT 2000ms 로는 어긋나고 2500ms 에서 맞는다.
+ *   · BACKFEED 288이면 3mm 밀리고 312가 정확하다.
  */
 const ALIGN_WAIT = 2500;
-const alignJobs = () => [calibrateCommand()];
+const BACKFEED_AFTER_ALIGN = 312;
+const backfeedCommand = (dots) => new TextEncoder().encode(`BACKFEED ${dots}\r\n`);
+const alignJobs = () => [calibrateCommand(), backfeedCommand(BACKFEED_AFTER_ALIGN)];
 
 // ─────────── WebUSB ───────────
 function usbSupported() { return 'usb' in navigator; }
