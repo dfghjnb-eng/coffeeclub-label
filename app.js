@@ -30,14 +30,17 @@ const LABEL_SPECS = {
              gapMm: 3.0, labelX: 126, backfeed: 312, ejectExtra: 36,
              pitchAdjust: 1, detail: false, divider: false,
              vertDx: 0, vertDy: 0, logo: false, logoH: 0,
-             fonts: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
+             fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
+             fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
              gapMm: 3.0, labelX: 66,  backfeed: 704, ejectExtra: 36,
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
              vertDx: 0, vertDy: 16, logo: true, logoH: 40,   // vertDy: 위를 2mm 내림
-             // 라벨이 크니 전부 24로 시작한다
-             fonts: { fsNum: 24, fsMain: 24, fsSub: 24, fsTiny: 24, fsCustom: 24, fsDate: 24 } },
+             // 모든 항목을 켜고도 안 잘리는 최대값 (실측): 가로형 20, 세로형 16.
+             // 세로형은 글자가 흐르는 길이가 30mm뿐이라 더 작아야 한다.
+             fonts:  { fsNum: 20, fsMain: 20, fsSub: 20, fsTiny: 20, fsCustom: 20, fsDate: 20 },
+             fontsV: { fsNum: 16, fsMain: 16, fsSub: 16, fsTiny: 16, fsCustom: 16, fsDate: 16 } },
 };
 const sizeSpec = (k) => LABEL_SPECS[k] || LABEL_SPECS['30x15'];
 
@@ -323,10 +326,11 @@ const setStep = (key, v) => {
              ? Number(v).toFixed(1) : String(Math.round(v));
 };
 
-// 라벨 크기에 맞는 기본 폰트 크기를 넣는다.
-// 저장된 설정을 불러올 때는 부르지 않는다 — 저장값이 이겨야 한다.
+// 라벨 크기·방향에 맞는 기본 폰트 크기를 넣는다.
+// 크기·방향 버튼을 누를 때만 부른다 — 저장된 설정을 불러올 때는 저장값이 이겨야 한다.
 function applySizeFonts(key) {
-  const f = sizeSpec(key).fonts;
+  const sp = sizeSpec(key || state.labelSize);
+  const f  = (state.vertical ? sp.fontsV : sp.fonts) || sp.fonts;
   if (!f) return;
   for (const [step, v] of Object.entries(f)) setStep(step, v);
 }
@@ -1263,6 +1267,7 @@ function init() {
       state.vertical = b.dataset.v === '1';
       document.querySelectorAll('#dirSeg button').forEach((x) =>
         x.classList.toggle('on', x === b));
+      applySizeFonts();
       render();
     };
   });
