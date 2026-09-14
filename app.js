@@ -30,7 +30,7 @@ const LABEL_SPECS = {
              gapMm: 3.0, labelX: 126, backfeed: 312, ejectExtra: 36,
              pitchAdjust: 1, detail: false, divider: false },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
-             gapMm: 3.0, labelX: 58,  backfeed: 704, ejectExtra: 36,
+             gapMm: 3.0, labelX: 66,  backfeed: 704, ejectExtra: 36,
              pitchAdjust: 1, detail: true,  divider: true },
 };
 const sizeSpec = (k) => LABEL_SPECS[k] || LABEL_SPECS['30x15'];
