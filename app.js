@@ -36,7 +36,7 @@ const LABEL_SPECS = {
              gapMm: 3.0, labelX: 66,  backfeed: 704, ejectExtra: 36,
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
-             vertDx: 0, vertDy: 16, logo: true, logoH: 40,   // vertDy: 위를 2mm 내림
+             vertDx: 0, vertDy: 4, logo: true, logoH: 40,   // vertDy: 2mm 내렸다가 1.5mm 되당김
              // 모든 항목을 켜고도 안 잘리는 최대값 (실측): 가로형 20, 세로형 16.
              // 세로형은 글자가 흐르는 길이가 30mm뿐이라 더 작아야 한다.
              fonts:  { fsNum: 20, fsMain: 20, fsSub: 20, fsTiny: 20, fsCustom: 20, fsDate: 20 },
@@ -112,6 +112,7 @@ const state = {
   mode: 'usb',        // 'server' = 매장 인쇄 서버 경유 / 'usb' = 이 컴퓨터에 직접 연결
   aligned: false,     // 종이가 라벨 시작점에 맞춰져 있는지 (배출하면 깨짐)
   alignedSize: null,  // 어떤 라벨 크기로 맞춘 정렬인지 (크기가 바뀌면 다시 맞춰야 한다)
+  overrides: {},      // 미리보기에서 직접 고친 값 (비우면 커피 데이터 값으로 돌아간다)
   ejectedDots: 0,     // 배출로 앞으로 밀어낸 양 — 되감을 때 더해야 한다
   preset: null,       // 지금 수정 중인 프리셋 이름 (저장하면 여기에 덮어쓴다)
   labelSize: '30x15', // 라벨 크기
@@ -368,7 +369,15 @@ function wrapText(ctx, text, maxW, ls) {
 }
 
 /** 라벨을 흰 배경·검정 글씨로 그린다 (크기·세로형은 o 에서 결정) */
+// 미리보기에서 눌렀을 때 어느 글자인지 알아내려고 마지막으로 그린 영역을 기억해 둔다
+let previewHits = [];
+let previewLayout = { CW: 0, CH: 0, vertical: false };
+
 function renderLabel(ctx, o) {
+  const hits = [];
+  const hit = (key, x, y, w, h) => {
+    if (key && w > 0 && h > 0) hits.push({ key, x, y, w, h });
+  };
   const ls = o.ls | 0, lg = o.lg | 0;
   const family = o.family;
   const sp = sizeSpec(o.size);
@@ -458,14 +467,16 @@ function renderLabel(ctx, o) {
   const tx = 4;
   let y = M + 2;
 
-  const drawWrapped = (text, size, gap) => {
+  const drawWrapped = (text, size, gap, key) => {
     if (!text) return;
     setFont(size);
+    const y0 = y;
     for (const line of wrapText(ctx, text, textMaxW, ls)) {
       if (y + size > MAX_Y) break;
       drawText(ctx, tx, y, line, ls);
       y += size + gap + lg;
     }
+    hit(key, tx, y0, textMaxW, y - y0 - lg);
   };
 
   const parts = {
@@ -479,20 +490,27 @@ function renderLabel(ctx, o) {
         const lineH = Math.max(o.fsNum, o.fsMain);
         setFont(o.fsNum);
         drawText(ctx, tx, y, roasting + sep, ls);
+        hit('roasting', tx, y, rw, lineH);
         setFont(o.fsMain);
         drawText(ctx, tx + rw, y + Math.max(0, o.fsNum - o.fsMain), lines[0], ls);
+        const coffeeY = y;
         y += lineH + 4 + lg;
         for (const line of lines.slice(1)) {
           if (y + o.fsMain > MAX_Y) break;
           drawText(ctx, tx, y, line, ls);
           y += o.fsMain + 4 + lg;
         }
+        // 첫 줄은 로스팅 오른쪽부터, 둘째 줄부터는 왼쪽 끝부터
+        hit('coffee', tx + rw, coffeeY, textMaxW - rw, lineH);
+        if (y - coffeeY > lineH + 4 + lg)
+          hit('coffee', tx, coffeeY + lineH + 4 + lg, textMaxW, y - coffeeY - lineH - 4 - lg - lg);
       } else if (o.showRoasting) {
         setFont(o.fsNum);
         drawText(ctx, tx, y, roasting, ls);
+        hit('roasting', tx, y, textMaxW, o.fsNum);
         y += o.fsNum + 4 + lg;
       } else if (o.showCoffee) {
-        drawWrapped(coffee, o.fsMain, 4);
+        drawWrapped(coffee, o.fsMain, 4, 'coffee');
       }
       if (sp.divider && o.showDivider && y + 4 < MAX_Y) {
         y -= 2;
@@ -501,46 +519,56 @@ function renderLabel(ctx, o) {
       }
     },
     date() {
-      if (o.showDate && o.date) drawWrapped(o.date, o.fsDate, 4);
+      if (o.showDate && o.date) drawWrapped(o.date, o.fsDate, 4, 'date');
     },
     note() {
-      if (o.showNote) drawWrapped(o.note, o.fsSub, 2);
+      if (o.showNote) drawWrapped(o.note, o.fsSub, 2, 'note');
     },
     custom() {
       const t = (o.customText || '').trim();
-      if (o.showCustom && t) drawWrapped(t, o.fsCustom, 2);
+      if (o.showCustom && t) drawWrapped(t, o.fsCustom, 2, 'custom');
     },
     type() {
       if (!o.showType) return;
-      const t = drinkTypeText(o.drinkType);
-      if (t) drawWrapped(t, o.fsSub, 2);
+      const t = (o.typeText === undefined || o.typeText === null)
+        ? drinkTypeText(o.drinkType) : o.typeText;
+      if (t) drawWrapped(t, o.fsSub, 2, 'type');
     },
     detail() {
       if (!o.showDetail) return;
       const rows = [];
-      if (o.origin)   rows.push(['원산지', o.origin]);
-      if (o.process)  rows.push(['가공',   o.process]);
-      if (o.altitude) rows.push(['고도',   o.altitude]);
-      if (o.variety)  rows.push(['품종',   o.variety]);
-      for (const [t, v] of rows) drawWrapped(`${t}  ${v}`, o.fsSub, 1);
+      if (o.origin)   rows.push(['원산지', o.origin,   'origin']);
+      if (o.process)  rows.push(['가공',   o.process,  'process']);
+      if (o.altitude) rows.push(['고도',   o.altitude, 'altitude']);
+      if (o.variety)  rows.push(['품종',   o.variety,  'variety']);
+      for (const [t, v, k] of rows) drawWrapped(`${t}  ${v}`, o.fsSub, 1, k);
     },
   };
 
   for (const key of o.order) parts[key] && parts[key]();
+
+  if (o.collectHits) {
+    previewHits = hits;
+    previewLayout = { CW, CH, vertical: !!o.vertical };
+  }
 }
 
 // ─────────── 주문(라벨) 데이터 만들기 ───────────
 function buildOrder() {
   const d = state.current || {};
   const showDate = $('dateCheck').checked;
+  // 미리보기에서 직접 고친 값이 있으면 그것을, 없으면 커피 데이터 값을 쓴다
+  const ov = state.overrides || {};
+  const pick = (k, fallback) => (ov[k] === undefined || ov[k] === null) ? fallback : ov[k];
   return {
     roasting: $('roasting').value.trim() || '—',
-    coffee:   d.name || '',
-    note:     d.flavor_notes || '',
-    origin:   d.origin || '',
-    process:  d.processing || '',
-    altitude: d.altitude || '',
-    variety:  d.variety || '',
+    coffee:   pick('coffee',   d.name || ''),
+    note:     pick('note',     d.flavor_notes || ''),
+    origin:   pick('origin',   d.origin || ''),
+    process:  pick('process',  d.processing || ''),
+    altitude: pick('altitude', d.altitude || ''),
+    variety:  pick('variety',  d.variety || ''),
+    typeText: ov.type,
     date:     showDate ? $('dateInput').value.trim() : '',
     customText: $('customText').value,
     qrData:   qrURL(),
@@ -615,6 +643,7 @@ function render() {
     done = true;
     renderPending = false;
     const o = buildOrder();
+    o.collectHits = true;          // 미리보기일 때만 글자 영역을 기억한다
     const off = renderLabelCanvas(o);
 
     const cv = $('previewCanvas');
@@ -629,6 +658,156 @@ function render() {
   };
   requestAnimationFrame(run);
   setTimeout(run, 120);
+}
+
+// ─────────── 미리보기에서 바로 고치기 ───────────
+// 미리보기는 그림이라 그 위에 입력칸을 겹쳐 띄운다.
+// 이미 입력칸이 있는 항목(로스팅·날짜·추가텍스트)은 그 칸에 직접 쓴다 — 값이 두 군데로 갈라지지 않게.
+const EDIT_FIELDS = {
+  type:     { label: '형식',       multiline: false },
+  roasting: { label: '로스팅',     multiline: false },
+  coffee:   { label: '커피명',     multiline: true  },
+  date:     { label: '날짜',       multiline: false },
+  note:     { label: '맛노트',     multiline: true  },
+  origin:   { label: '원산지',     multiline: false },
+  process:  { label: '가공',       multiline: false },
+  altitude: { label: '고도',       multiline: false },
+  variety:  { label: '품종',       multiline: false },
+  custom:   { label: '추가 텍스트', multiline: true  },
+};
+
+function editGet(key) {
+  const d = state.current || {}, ov = state.overrides;
+  switch (key) {
+    case 'roasting': return $('roasting').value;
+    case 'date':     return $('dateInput').value;
+    case 'custom':   return $('customText').value;
+    case 'type':     return ov.type     ?? drinkTypeText(state.drinkType);
+    case 'coffee':   return ov.coffee   ?? (d.name || '');
+    case 'note':     return ov.note     ?? (d.flavor_notes || '');
+    case 'origin':   return ov.origin   ?? (d.origin || '');
+    case 'process':  return ov.process  ?? (d.processing || '');
+    case 'altitude': return ov.altitude ?? (d.altitude || '');
+    case 'variety':  return ov.variety  ?? (d.variety || '');
+  }
+  return '';
+}
+
+function editSet(key, v) {
+  if (key === 'roasting') {
+    $('roasting').value = v;
+  } else if (key === 'date') {
+    $('dateInput').value = v;
+    if (v && !$('dateCheck').checked) { $('dateCheck').checked = true; syncDateInput(); }
+  } else if (key === 'custom') {
+    $('customText').value = v;
+  } else {
+    state.overrides[key] = v;      // 비우면 커피 데이터 값으로 돌아간다
+    if (v === '') delete state.overrides[key];
+  }
+  render();
+}
+
+/** 그리기 좌표의 네모 → 화면(px) 네모 */
+function hitToScreen(box) {
+  const cv = $('previewCanvas');
+  const sp = sizeSpec(state.labelSize);
+  const k  = cv.getBoundingClientRect().width / sp.lw;   // 라벨 1도트 = 화면 k px
+  const { CH, vertical } = previewLayout;
+  const r = vertical
+    ? { x: CH - (box.y + box.h), y: box.x, w: box.h, h: box.w }   // 시계방향 90도
+    : { x: box.x, y: box.y, w: box.w, h: box.h };
+  return { x: r.x * k, y: r.y * k, w: r.w * k, h: r.h * k, k };
+}
+
+/** 화면에서 누른 지점 → 그리기 좌표 */
+function screenToHit(clientX, clientY) {
+  const cv = $('previewCanvas');
+  const r  = cv.getBoundingClientRect();
+  const sp = sizeSpec(state.labelSize);
+  const k  = r.width / sp.lw;
+  const lx = (clientX - r.left) / k, ly = (clientY - r.top) / k;
+  const { CH, vertical } = previewLayout;
+  return vertical ? { x: ly, y: CH - lx } : { x: lx, y: ly };
+}
+
+function findHit(clientX, clientY) {
+  const p = screenToHit(clientX, clientY);
+  const PAD = 4;   // 손가락으로도 집히도록 살짝 여유
+  for (const b of previewHits) {
+    if (!EDIT_FIELDS[b.key]) continue;
+    if (p.x >= b.x - PAD && p.x <= b.x + b.w + PAD &&
+        p.y >= b.y - PAD && p.y <= b.y + b.h + PAD) return b;
+  }
+  return null;
+}
+
+let editorEl = null, editorKey = null;
+
+function closeEditor(commit) {
+  if (!editorEl) return;
+  const key = editorKey, el = editorEl.querySelector('input,textarea');
+  const v = el ? el.value : null;
+  editorEl.remove();
+  editorEl = null; editorKey = null;
+  if (commit && v !== null) editSet(key, v);
+}
+
+function openEditor(box) {
+  closeEditor(true);
+  const f = EDIT_FIELDS[box.key];
+  const r = hitToScreen(box);
+  const wrap = $('previewCanvas').parentElement;
+  wrap.style.position = 'relative';
+
+  const host = document.createElement('div');
+  host.className = 'inlineEdit';
+  const el = document.createElement(f.multiline ? 'textarea' : 'input');
+  if (!f.multiline) el.type = 'text';
+  el.value = editGet(box.key);
+  el.placeholder = f.label;
+  host.appendChild(el);
+
+  // 세로형은 글자가 아래로 흐르므로 입력칸도 시계방향 90도로 눕힌다
+  if (previewLayout.vertical) {
+    host.style.left = `${r.x + r.w}px`;
+    host.style.top  = `${r.y}px`;
+    host.style.width  = `${Math.max(60, r.h)}px`;
+    host.style.height = `${Math.max(22, r.w)}px`;
+    host.style.transformOrigin = '0 0';
+    host.style.transform = 'rotate(90deg)';
+  } else {
+    host.style.left = `${r.x}px`;
+    host.style.top  = `${r.y}px`;
+    host.style.width  = `${Math.max(60, r.w)}px`;
+    host.style.height = `${Math.max(22, r.h)}px`;
+  }
+  wrap.appendChild(host);
+  editorEl = host; editorKey = box.key;
+
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); closeEditor(false); }
+    // 한 줄짜리는 엔터로 확정, 여러 줄짜리는 엔터가 줄바꿈
+    if (e.key === 'Enter' && !f.multiline) { e.preventDefault(); closeEditor(true); }
+    e.stopPropagation();
+  });
+  el.addEventListener('input', () => editSet(box.key, el.value));
+  el.addEventListener('blur', () => setTimeout(() => closeEditor(true), 0));
+  el.focus();
+  if (el.setSelectionRange) el.setSelectionRange(el.value.length, el.value.length);
+}
+
+function initPreviewEditing() {
+  const cv = $('previewCanvas');
+  cv.addEventListener('click', (e) => {
+    const box = findHit(e.clientX, e.clientY);
+    if (box) { e.preventDefault(); openEditor(box); }
+    else closeEditor(true);
+  });
+  // 고칠 수 있는 글자 위에서는 커서를 바꿔 알려준다
+  cv.addEventListener('mousemove', (e) => {
+    cv.style.cursor = findHit(e.clientX, e.clientY) ? 'text' : 'default';
+  });
 }
 
 // ─────────── 라벨 → 1비트 비트맵 ───────────
@@ -1014,6 +1193,7 @@ async function loadSettings(id) {
   setStep('fsTiny',   s.fs_tiny   ?? 8);
   setStep('fsCustom', s.fs_custom ?? 11);
   setStep('fsDate',   s.fs_date ?? s.fs_sub ?? 11);
+  state.overrides = (s.overrides && typeof s.overrides === 'object') ? { ...s.overrides } : {};
   state.labelSize = LABEL_SPECS[s.label_size] ? s.label_size : '30x15';
   state.vertical  = !!s.vertical;
   state.drinkType = s.drink_type || '';
@@ -1064,6 +1244,7 @@ async function saveSettings() {
     element_order: state.order.slice(),
     element_checked: [...state.checked],
     show_qr: $('visQR').checked, show_details: $('visDetails').checked,
+    overrides: { ...state.overrides },   // 미리보기에서 직접 고친 값
   };
   await remote.saveOne('settings', id, entry);
   setStatus(`✓ [${state.current.name}] 설정 저장 완료`
@@ -1337,6 +1518,8 @@ function init() {
   $('printBtn').onclick = doPrint;
   $('ejectBtn').onclick = doEject;
   $('calibBtn').onclick = doCalibrate;
+
+  initPreviewEditing();   // 미리보기 글자를 눌러 바로 고치기
 
   // 매장 인쇄 서버가 서빙 중이면 서버 모드, 아니면 이 컴퓨터의 USB(WebUSB) 모드
   // 모드가 정해진 뒤에 프리셋·커피 목록을 읽어야 매장 맥의 파일을 가져온다
