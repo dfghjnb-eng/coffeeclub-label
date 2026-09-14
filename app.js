@@ -29,12 +29,15 @@ const LABEL_SPECS = {
   '30x15': { name: '30 × 15 mm', wMm: 30, hMm: 15, lw: 240, lh: 120,
              gapMm: 3.0, labelX: 126, backfeed: 312, ejectExtra: 36,
              pitchAdjust: 1, detail: false, divider: false,
-             vertDx: 0, vertDy: 0, logo: false, logoH: 0 },
+             vertDx: 0, vertDy: 0, logo: false, logoH: 0,
+             fonts: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
              gapMm: 3.0, labelX: 66,  backfeed: 704, ejectExtra: 36,
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
-             vertDx: 0, vertDy: 0, logo: true, logoH: 40 },
+             vertDx: 0, vertDy: 0, logo: true, logoH: 40,
+             // 라벨이 크니 전부 24로 시작한다
+             fonts: { fsNum: 24, fsMain: 24, fsSub: 24, fsTiny: 24, fsCustom: 24, fsDate: 24 } },
 };
 const sizeSpec = (k) => LABEL_SPECS[k] || LABEL_SPECS['30x15'];
 
@@ -319,6 +322,14 @@ const setStep = (key, v) => {
               key === 'fsTiny' || key === 'fsCustom' || key === 'fsDate')
              ? Number(v).toFixed(1) : String(Math.round(v));
 };
+
+// 라벨 크기에 맞는 기본 폰트 크기를 넣는다.
+// 저장된 설정을 불러올 때는 부르지 않는다 — 저장값이 이겨야 한다.
+function applySizeFonts(key) {
+  const f = sizeSpec(key).fonts;
+  if (!f) return;
+  for (const [step, v] of Object.entries(f)) setStep(step, v);
+}
 
 // ─────────── 라벨 그리기 (label_printer.py 이식) ───────────
 function textW(ctx, text, ls) {
@@ -1207,12 +1218,12 @@ function init() {
   const g = $('fontSteps');
   makeStep(g, 'fsNum',  '로스팅',   18, 6, 40, 0.2, 1);
   makeStep(g, 'fsMain', '커피명',   14, 6, 40, 0.2, 1);
-  makeStep(g, 'fsSub',  '맛노트',   11, 5, 24, 0.2, 1);
-  makeStep(g, 'fsTiny', '자세히보기', 8, 4, 16, 0.2, 1);
-  makeStep(g, 'fsDate', '날짜',     11, 5, 24, 0.2, 1);
+  makeStep(g, 'fsSub',  '맛노트',   11, 5, 40, 0.2, 1);
+  makeStep(g, 'fsTiny', '자세히보기', 8, 4, 40, 0.2, 1);
+  makeStep(g, 'fsDate', '날짜',     11, 5, 40, 0.2, 1);
   makeStep(g, 'lsSpin', '자간(px)',  0, -10, 20, 1, 0);
   makeStep(g, 'lgSpin', '행간(px)',  0, -10, 20, 1, 0);
-  makeStep($('customSteps'), 'fsCustom', '추가텍스트', 11, 5, 24, 0.2, 1);
+  makeStep($('customSteps'), 'fsCustom', '추가텍스트', 11, 5, 40, 0.2, 1);
   makeStep($('copySteps'),   'copies',   '출력 장수',   1, 1, 30, 1, 0);
 
   // 이벤트
@@ -1240,6 +1251,7 @@ function init() {
       state.labelSize = key;
       sizeSeg.querySelectorAll('button').forEach((x) =>
         x.classList.toggle('on', x.dataset.key === key));
+      applySizeFonts(key);
       render();
     };
     sizeSeg.appendChild(b);
