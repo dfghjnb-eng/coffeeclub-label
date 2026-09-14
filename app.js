@@ -28,12 +28,26 @@ const DPMM = 203 / 25.4;
 const LABEL_SPECS = {
   '30x15': { name: '30 × 15 mm', wMm: 30, hMm: 15, lw: 240, lh: 120,
              gapMm: 3.0, labelX: 126, backfeed: 312, ejectExtra: 36,
-             pitchAdjust: 1, detail: false, divider: false },
+             pitchAdjust: 1, detail: false, divider: false,
+             vertDx: 0, vertDy: 0, logo: false, logoH: 0 },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
              gapMm: 3.0, labelX: 66,  backfeed: 704, ejectExtra: 36,
-             pitchAdjust: 1, detail: true,  divider: true },
+             pitchAdjust: 1, detail: true,  divider: true,
+             // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
+             vertDx: 0, vertDy: 0, logo: true, logoH: 40 },
 };
 const sizeSpec = (k) => LABEL_SPECS[k] || LABEL_SPECS['30x15'];
+
+// ── QR 위에 올릴 로고 마크 ──
+const LOGO_GAP = 5;
+let logoImg = null;
+(function loadLogo() {
+  const im = new Image();
+  // 초기화보다 먼저 도착할 수 있으므로 안전하게 다시 그린다
+  im.onload  = () => { logoImg = im; try { render(); } catch (e) {} };
+  im.onerror = () => { logoImg = null; };
+  im.src = 'logo-mark.png';
+})();
 
 // 라벨 맨 위 형식 (한글, 영문)
 const DRINK_TYPES = [
@@ -355,6 +369,12 @@ function renderLabel(ctx, o) {
   ctx.textBaseline = 'alphabetic';
 
   const M = 8;
+  // ── QR 위 로고 (50×30 에서만) ──
+  const showLogo = !!(o.showQR && sp.logo && logoImg);
+  const logoH    = showLogo ? sp.logoH : 0;
+  const logoW    = showLogo ? Math.max(1, Math.round(logoH * logoImg.width / logoImg.height)) : 0;
+  const logoBox  = showLogo ? logoH + LOGO_GAP : 0;   // QR 위로 비워둘 높이
+
   // 가로로 넓으면 QR을 오른쪽에, 세로로 길면 아래 가운데에
   const qrBottom = CH > CW;
   let QR_SIZE, qrX, qrY, textMaxW, MAX_Y;
@@ -363,11 +383,11 @@ function renderLabel(ctx, o) {
     qrX      = Math.floor((CW - QR_SIZE) / 2);
     qrY      = CH - QR_SIZE - (o.showDetails ? 14 : 4);
     textMaxW = CW - 8;
-    MAX_Y    = o.showQR ? qrY - 6 : CH - 2;
+    MAX_Y    = o.showQR ? qrY - logoBox - 6 : CH - 2;
   } else {
-    QR_SIZE  = Math.min(CH <= 130 ? 82 : Math.floor(CH * 0.42), CH - 2 * M - 14);
+    QR_SIZE  = Math.min(CH <= 130 ? 82 : Math.floor(CH * 0.42), CH - 2 * M - 14 - logoBox);
     qrX      = o.showQR ? CW - QR_SIZE - 6 : CW;
-    qrY      = M;
+    qrY      = M + logoBox;
     textMaxW = o.showQR ? qrX - 8 : CW - 8;
     MAX_Y    = CH - 2;
   }
@@ -392,6 +412,13 @@ function renderLabel(ctx, o) {
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(off, qrX, qrY, QR_SIZE, QR_SIZE);
     } catch (e) { /* QR 실패 시 건너뜀 */ }
+
+    // ── QR 바로 위에 로고 마크 (QR 폭 기준 가운데) ──
+    if (showLogo) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(logoImg, qrX + Math.floor((QR_SIZE - logoW) / 2),
+                    qrY - LOGO_GAP - logoH, logoW, logoH);
+    }
 
     // ── QR 아래: 자세히 보기 ▲ ──
     if (o.showDetails) {
@@ -603,7 +630,10 @@ function labelToBitmap(o) {
 
   const off = renderLabelCanvas(o);
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(off, sp.labelX, 0);
+  // 세로형은 내용이 네 변에 꽉 차서 가로형과 같은 위치로는 잘린다
+  const dx = o.vertical ? (sp.vertDx | 0) : 0;
+  const dy = o.vertical ? (sp.vertDy | 0) : 0;
+  ctx.drawImage(off, sp.labelX + dx, dy);
 
   const px = ctx.getImageData(0, 0, W_FULL, height).data;
   const bytesPerRow = W_FULL / 8;
