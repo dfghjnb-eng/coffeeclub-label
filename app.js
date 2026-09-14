@@ -20,8 +20,32 @@ const W_FULL  = 600;      // 헤드 전체 폭 (dots)
 // 라벨 가로 위치 (dots). 1mm = 8 dots, 줄이면 종이 나오는 방향 기준 왼쪽으로 이동.
 // 실기 확인: 130에서 오른쪽으로 0.5mm 치우쳐 126으로 맞췄다.
 const LABEL_X = 126;
-const LW = 240, LH = 120; // 라벨 30mm × 15mm
+const LW = 240, LH = 120; // 라벨 30mm × 15mm (기본)
 const GAP_MM = 3.0;
+const DPMM = 203 / 25.4;
+
+// 라벨 크기별 설정 — label_printer.py 의 LABEL_SPECS 와 반드시 같아야 한다
+const LABEL_SPECS = {
+  '30x15': { name: '30 × 15 mm', wMm: 30, hMm: 15, lw: 240, lh: 120,
+             gapMm: 3.0, labelX: 126, backfeed: 312, ejectExtra: 36,
+             pitchAdjust: 1, detail: false, divider: false },
+  '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
+             gapMm: 3.0, labelX: 58,  backfeed: 704, ejectExtra: 36,
+             pitchAdjust: 1, detail: true,  divider: true },
+};
+const sizeSpec = (k) => LABEL_SPECS[k] || LABEL_SPECS['30x15'];
+
+// 라벨 맨 위 형식 (한글, 영문)
+const DRINK_TYPES = [
+  ['커스텀 아메리카노',   'Custom Americano'],
+  ['하이엔드 아메리카노', 'High-end Americano'],
+  ['드립',               'Drip'],
+  ['하이엔드 드립',       'High-end Drip'],
+];
+const drinkTypeText = (ko) => {
+  const hit = DRINK_TYPES.find(([k]) => k === ko);
+  return hit ? `${hit[0]}   ${hit[1]}` : (ko || '');
+};
 
 const LS_SETTINGS = 'coffeeclub.printer.settings';
 const LS_PRESETS  = 'coffeeclub.printer.presets';
@@ -51,12 +75,14 @@ const FONTS = {
 };
 
 const ORDER_LABELS = {
+  type:            '🏷 형식',
   roasting_coffee: '☕ 로스팅 + 커피명',
+  detail:          '🌱 기본정보',
   date:            '📅 날짜',
   note:            '✍️ 맛노트',
   custom:          '📝 추가텍스트',
 };
-const DEFAULT_ORDER = ['roasting_coffee', 'date', 'note', 'custom'];
+const DEFAULT_ORDER = ['type', 'roasting_coffee', 'detail', 'note', 'date', 'custom'];
 
 // ─────────── 상태 ───────────
 const state = {
@@ -67,6 +93,9 @@ const state = {
   aligned: false,     // 종이가 라벨 시작점에 맞춰져 있는지 (배출하면 깨짐)
   ejectedDots: 0,     // 배출로 앞으로 밀어낸 양 — 되감을 때 더해야 한다
   preset: null,       // 지금 수정 중인 프리셋 이름 (저장하면 여기에 덮어쓴다)
+  labelSize: '30x15', // 라벨 크기
+  vertical: false,    // 세로형(글자 90도)
+  drinkType: '',      // 맨 위 형식
   device: null,
   iface: 0,
   endpoint: 1,
@@ -272,7 +301,8 @@ const setStep = (key, v) => {
   if (!el) return;
   const dec = el.value.includes('.') || String(v).includes('.') ? 1 : 0;
   el.value = (key === 'fsNum' || key === 'fsMain' || key === 'fsSub' ||
-              key === 'fsTiny' || key === 'fsCustom') ? Number(v).toFixed(1) : String(Math.round(v));
+              key === 'fsTiny' || key === 'fsCustom' || key === 'fsDate')
+             ? Number(v).toFixed(1) : String(Math.round(v));
 };
 
 // ─────────── 라벨 그리기 (label_printer.py 이식) ───────────
@@ -307,22 +337,39 @@ function wrapText(ctx, text, maxW, ls) {
   return out.length ? out : [''];
 }
 
-/** 240×120 라벨을 흰 배경·검정 글씨로 그린다 */
+/** 라벨을 흰 배경·검정 글씨로 그린다 (크기·세로형은 o 에서 결정) */
 function renderLabel(ctx, o) {
   const ls = o.ls | 0, lg = o.lg | 0;
   const family = o.family;
+  const sp = sizeSpec(o.size);
   const setFont = (px) => { ctx.font = `${px}px "${family}", sans-serif`; };
 
+  // 세로형은 가로·세로를 바꿔 그린 뒤 마지막에 90도 돌린다
+  const CW = o.vertical ? sp.lh : sp.lw;
+  const CH = o.vertical ? sp.lw : sp.lh;
+
   ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, LW, LH);
+  ctx.fillRect(0, 0, CW, CH);
   ctx.fillStyle = '#000';
   ctx.textBaseline = 'alphabetic';
 
-  const M = 8, QR_SIZE = 82;
-  let qrX, textMaxW;
-  if (o.showQR) { qrX = LW - QR_SIZE - 6; textMaxW = qrX - 8; }
-  else          { qrX = LW;               textMaxW = LW - 8; }
-  const MAX_Y = LH - 2;
+  const M = 8;
+  // 가로로 넓으면 QR을 오른쪽에, 세로로 길면 아래 가운데에
+  const qrBottom = CH > CW;
+  let QR_SIZE, qrX, qrY, textMaxW, MAX_Y;
+  if (qrBottom) {
+    QR_SIZE  = Math.min(Math.floor(CW * 0.62), Math.floor(CH / 3));
+    qrX      = Math.floor((CW - QR_SIZE) / 2);
+    qrY      = CH - QR_SIZE - (o.showDetails ? 14 : 4);
+    textMaxW = CW - 8;
+    MAX_Y    = o.showQR ? qrY - 6 : CH - 2;
+  } else {
+    QR_SIZE  = Math.min(CH <= 130 ? 82 : Math.floor(CH * 0.42), CH - 2 * M - 14);
+    qrX      = o.showQR ? CW - QR_SIZE - 6 : CW;
+    qrY      = M;
+    textMaxW = o.showQR ? qrX - 8 : CW - 8;
+    MAX_Y    = CH - 2;
+  }
 
   // ── QR 코드 ──
   if (o.showQR) {
@@ -342,14 +389,14 @@ function renderLabel(ctx, o) {
           if (qr.isDark(r, c))
             oc.fillRect((c + border) * box, (r + border) * box, box, box);
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(off, qrX, M, QR_SIZE, QR_SIZE);
+      ctx.drawImage(off, qrX, qrY, QR_SIZE, QR_SIZE);
     } catch (e) { /* QR 실패 시 건너뜀 */ }
 
     // ── QR 아래: 자세히 보기 ▲ ──
     if (o.showDetails) {
       setFont(o.fsTiny);
       const label = '자세히 보기';
-      const areaY = M + QR_SIZE + 4;
+      const areaY = qrY + QR_SIZE + 4;
       const tw = 10, th = 6, gapTri = 3;
       const txtW = Math.round(textW(ctx, label, ls));
       const startX = qrX + Math.floor((QR_SIZE - (txtW + gapTri + tw)) / 2);
@@ -404,9 +451,14 @@ function renderLabel(ctx, o) {
       } else if (o.showCoffee) {
         drawWrapped(coffee, o.fsMain, 4);
       }
+      if (sp.divider && o.showDivider && y + 4 < MAX_Y) {
+        y -= 2;
+        ctx.fillRect(tx, y, textMaxW - 4, 1);
+        y += 6;
+      }
     },
     date() {
-      if (o.showDate && o.date) drawWrapped(o.date, o.fsSub, 4);
+      if (o.showDate && o.date) drawWrapped(o.date, o.fsDate, 4);
     },
     note() {
       if (o.showNote) drawWrapped(o.note, o.fsSub, 2);
@@ -414,6 +466,20 @@ function renderLabel(ctx, o) {
     custom() {
       const t = (o.customText || '').trim();
       if (o.showCustom && t) drawWrapped(t, o.fsCustom, 2);
+    },
+    type() {
+      if (!o.showType) return;
+      const t = drinkTypeText(o.drinkType);
+      if (t) drawWrapped(t, o.fsSub, 2);
+    },
+    detail() {
+      if (!o.showDetail) return;
+      const rows = [];
+      if (o.origin)   rows.push(['원산지', o.origin]);
+      if (o.process)  rows.push(['가공',   o.process]);
+      if (o.altitude) rows.push(['고도',   o.altitude]);
+      if (o.variety)  rows.push(['품종',   o.variety]);
+      for (const [t, v] of rows) drawWrapped(`${t}  ${v}`, o.fsSub, 1);
     },
   };
 
@@ -428,6 +494,10 @@ function buildOrder() {
     roasting: $('roasting').value.trim() || '—',
     coffee:   d.name || '',
     note:     d.flavor_notes || '',
+    origin:   d.origin || '',
+    process:  d.processing || '',
+    altitude: d.altitude || '',
+    variety:  d.variety || '',
     date:     showDate ? $('dateInput').value.trim() : '',
     customText: $('customText').value,
     qrData:   qrURL(),
@@ -437,8 +507,15 @@ function buildOrder() {
     fsSub:    getStep('fsSub'),
     fsTiny:   getStep('fsTiny'),
     fsCustom: getStep('fsCustom'),
+    fsDate:   getStep('fsDate'),
     ls:       getStep('lsSpin'),
     lg:       getStep('lgSpin'),
+    size:       state.labelSize,
+    vertical:   state.vertical,
+    drinkType:  state.drinkType,
+    showType:   state.checked.has('type'),
+    showDetail: state.checked.has('detail'),
+    showDivider: true,
     order:    state.order.slice(),
     showRoasting: state.checked.has('roasting_coffee'),
     showCoffee:   state.checked.has('roasting_coffee'),
@@ -457,31 +534,65 @@ function qrURL() {
   return `${PUBLIC_BASE_URL}/coffee/${id}`;
 }
 
+/** 라벨 1장을 실제 크기 캔버스로 만들어 준다 (세로형이면 회전까지) */
+function renderLabelCanvas(o) {
+  const sp = sizeSpec(o.size);
+  const cv = document.createElement('canvas');
+  cv.width = sp.lw; cv.height = sp.lh;
+  const ctx = cv.getContext('2d');
+  if (!o.vertical) {
+    renderLabel(ctx, o);
+    return cv;
+  }
+  // 세로로 그린 뒤 시계방향 90도 회전해 붙인다
+  const off = document.createElement('canvas');
+  off.width = sp.lh; off.height = sp.lw;
+  renderLabel(off.getContext('2d'), o);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.save();
+  ctx.translate(cv.width, 0);
+  ctx.rotate(Math.PI / 2);
+  ctx.drawImage(off, 0, 0);
+  ctx.restore();
+  return cv;
+}
+
 // ─────────── 미리보기 ───────────
 let renderPending = false;
 function render() {
   if (renderPending) return;
   renderPending = true;
-  requestAnimationFrame(() => {
+  // 화면이 숨겨지면 requestAnimationFrame 이 멈춘다.
+  // 그대로 두면 renderPending 이 true 로 고착돼 미리보기가 영영 갱신되지 않으므로
+  // 타이머도 함께 걸어 먼저 오는 쪽이 그린다.
+  let done = false;
+  const run = () => {
+    if (done) return;
+    done = true;
     renderPending = false;
     const o = buildOrder();
-    const off = document.createElement('canvas');
-    off.width = LW; off.height = LH;
-    renderLabel(off.getContext('2d'), o);
+    const off = renderLabelCanvas(o);
 
     const cv = $('previewCanvas');
+    if (cv.width !== off.width * 3 || cv.height !== off.height * 3) {
+      cv.width = off.width * 3; cv.height = off.height * 3;   // 라벨 비율 유지
+    }
     const ctx = cv.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.drawImage(off, 0, 0, cv.width, cv.height);
-  });
+  };
+  requestAnimationFrame(run);
+  setTimeout(run, 120);
 }
 
 // ─────────── 라벨 → 1비트 비트맵 ───────────
 function labelToBitmap(o) {
-  const gapPx  = Math.round(GAP_MM * 203 / 25.4);   // 24
-  const height = LH + gapPx;
+  const sp     = sizeSpec(o.size);
+  const gapPx  = Math.round(sp.gapMm * DPMM);
+  const height = sp.lh + gapPx;
 
   const cv = document.createElement('canvas');
   cv.width = W_FULL; cv.height = height;
@@ -489,11 +600,9 @@ function labelToBitmap(o) {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, W_FULL, height);
 
-  const off = document.createElement('canvas');
-  off.width = LW; off.height = LH;
-  renderLabel(off.getContext('2d'), o);
+  const off = renderLabelCanvas(o);
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(off, LABEL_X, 0);
+  ctx.drawImage(off, sp.labelX, 0);
 
   const px = ctx.getImageData(0, 0, W_FULL, height).data;
   const bytesPerRow = W_FULL / 8;
@@ -539,8 +648,9 @@ function rasterCommand(bytesPerRow, height, data) {
 }
 
 function ejectCommand() {
-  const gapPx = Math.round(GAP_MM * 203 / 25.4);
-  const rows  = Math.max(1, LH + gapPx - 32);
+  const sp    = sizeSpec(state.labelSize);
+  const gapPx = Math.round(sp.gapMm * DPMM);
+  const rows  = Math.max(1, sp.lh + gapPx - 32);
   const bytesPerRow = W_FULL / 8;
   return rasterCommand(bytesPerRow, rows, new Uint8Array(bytesPerRow * rows));
 }
@@ -551,15 +661,17 @@ function ejectCommand() {
  * 보정하지 않으면 장이 넘어갈수록 인쇄가 위로 밀려 위쪽이 잘린다.
  * 실기 테스트에서 장당 +1 dot 이 정확했다.
  */
-const PITCH_ADJUST = 1;
 function pitchFeedCommand() {
+  const n = sizeSpec(state.labelSize).pitchAdjust;
   const bytesPerRow = W_FULL / 8;
-  return rasterCommand(bytesPerRow, PITCH_ADJUST,
-                       new Uint8Array(bytesPerRow * PITCH_ADJUST));
+  return rasterCommand(bytesPerRow, n, new Uint8Array(bytesPerRow * n));
 }
 
-const calibrateCommand = () =>
-  new TextEncoder().encode('SIZE 30 mm,15 mm\r\nGAP 3 mm,0 mm\r\nCLS\r\nPRINT 1\r\n');
+const calibrateCommand = () => {
+  const sp = sizeSpec(state.labelSize);
+  return new TextEncoder().encode(
+    `SIZE ${sp.wMm} mm,${sp.hMm} mm\r\nGAP ${sp.gapMm} mm,0 mm\r\nCLS\r\nPRINT 1\r\n`);
+};
 
 /**
  * 인쇄 전 라벨 위치 자동 정렬 (버려지는 라벨 없음)
@@ -579,8 +691,9 @@ const BACKFEED_AFTER_ALIGN = 312;
 const EJECT_BACKFEED_EXTRA = 36;
 const backfeedCommand = (dots) => new TextEncoder().encode(`BACKFEED ${dots}\r\n`);
 const alignJobs = () => {
-  let back = BACKFEED_AFTER_ALIGN + state.ejectedDots;
-  if (state.ejectedDots) back += EJECT_BACKFEED_EXTRA;
+  const sp = sizeSpec(state.labelSize);
+  let back = sp.backfeed + state.ejectedDots;
+  if (state.ejectedDots) back += sp.ejectExtra;
   state.ejectedDots = 0;
   return [calibrateCommand(), backfeedCommand(back)];
 };
@@ -738,7 +851,9 @@ async function doPrint() {
       }
       for (let i = 0; i < copies; i++) {
         jobs.push({ data: bytes });
-        if (PITCH_ADJUST) jobs.push({ data: pitchFeedCommand(), wait: 300 });
+        if (sizeSpec(state.labelSize).pitchAdjust) {
+          jobs.push({ data: pitchFeedCommand(), wait: 300 });
+        }
       }
       await sendUSBJobs(jobs);
       state.aligned = true;
@@ -755,7 +870,10 @@ async function doEject() {
     if (state.mode === 'server') await serverPost('eject');
     else await sendUSB(ejectCommand());
     state.aligned = false;      // 배출하면 정렬이 깨진다
-    state.ejectedDots += Math.max(1, LH + Math.round(GAP_MM * 203 / 25.4) - 32);
+    {
+      const sp = sizeSpec(state.labelSize);
+      state.ejectedDots += Math.max(1, sp.lh + Math.round(sp.gapMm * DPMM) - 32);
+    }
     setStatus('✓ 배출 완료');
   } catch (e) { setStatus('오류: ' + e.message); }
   finally { busy(false); }
@@ -786,7 +904,7 @@ function busy(on, msg) {
 async function loadCoffees() {
   setStatus('커피 목록 불러오는 중…');
   try {
-    const url = `${SUPABASE_URL}/rest/v1/coffees?select=id,name,flavor_notes&published=eq.true&order=created_at.desc`;
+    const url = `${SUPABASE_URL}/rest/v1/coffees?select=id,name,flavor_notes,origin,processing,altitude,variety&published=eq.true&order=created_at.desc`;
     const res = await fetch(url, {
       headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` },
     });
@@ -846,6 +964,15 @@ async function loadSettings(id) {
   setStep('fsSub',    s.fs_sub    ?? 11);
   setStep('fsTiny',   s.fs_tiny   ?? 8);
   setStep('fsCustom', s.fs_custom ?? 11);
+  setStep('fsDate',   s.fs_date ?? s.fs_sub ?? 11);
+  state.labelSize = LABEL_SPECS[s.label_size] ? s.label_size : '30x15';
+  state.vertical  = !!s.vertical;
+  state.drinkType = s.drink_type || '';
+  document.querySelectorAll('#sizeSeg button').forEach((b) =>
+    b.classList.toggle('on', b.dataset.key === state.labelSize));
+  document.querySelectorAll('#dirSeg button').forEach((b) =>
+    b.classList.toggle('on', (b.dataset.v === '1') === state.vertical));
+  $('typeSelect').value = state.drinkType;
   setStep('lsSpin',   s.ls ?? 0);
   setStep('lgSpin',   s.lg ?? 0);
   if (s.font && FONTS[s.font]) $('fontSelect').value = s.font;
@@ -878,6 +1005,10 @@ async function saveSettings() {
     date:        $('dateInput').value.trim(),
     fs_num: getStep('fsNum'), fs_main: getStep('fsMain'), fs_sub: getStep('fsSub'),
     fs_tiny: getStep('fsTiny'), fs_custom: getStep('fsCustom'),
+    fs_date: getStep('fsDate'),
+    label_size: state.labelSize,
+    vertical: state.vertical,
+    drink_type: state.drinkType,
     ls: getStep('lsSpin'), lg: getStep('lgSpin'),
     custom_text: $('customText').value,
     qr_type: state.qrType, qr_custom: $('qrCustom').value.trim(),
@@ -1044,6 +1175,7 @@ function init() {
   makeStep(g, 'fsMain', '커피명',   14, 6, 40, 0.2, 1);
   makeStep(g, 'fsSub',  '맛노트',   11, 5, 24, 0.2, 1);
   makeStep(g, 'fsTiny', '자세히보기', 8, 4, 16, 0.2, 1);
+  makeStep(g, 'fsDate', '날짜',     11, 5, 24, 0.2, 1);
   makeStep(g, 'lsSpin', '자간(px)',  0, -10, 20, 1, 0);
   makeStep(g, 'lgSpin', '행간(px)',  0, -10, 20, 1, 0);
   makeStep($('customSteps'), 'fsCustom', '추가텍스트', 11, 5, 24, 0.2, 1);
@@ -1062,6 +1194,41 @@ function init() {
   $('visQR').onchange = render;
   $('visDetails').onchange = render;
   $('dateInput').value = todayStr();
+
+  // 라벨 크기
+  const sizeSeg = $('sizeSeg');
+  for (const [key, sp] of Object.entries(LABEL_SPECS)) {
+    const b = document.createElement('button');
+    b.textContent = sp.name;
+    b.dataset.key = key;
+    if (key === state.labelSize) b.classList.add('on');
+    b.onclick = () => {
+      state.labelSize = key;
+      sizeSeg.querySelectorAll('button').forEach((x) =>
+        x.classList.toggle('on', x.dataset.key === key));
+      render();
+    };
+    sizeSeg.appendChild(b);
+  }
+
+  // 방향
+  document.querySelectorAll('#dirSeg button').forEach((b) => {
+    b.onclick = () => {
+      state.vertical = b.dataset.v === '1';
+      document.querySelectorAll('#dirSeg button').forEach((x) =>
+        x.classList.toggle('on', x === b));
+      render();
+    };
+  });
+
+  // 형식
+  const typeSel = $('typeSelect');
+  for (const [ko, en] of DRINK_TYPES) {
+    const o = document.createElement('option');
+    o.value = ko; o.textContent = `${ko}  (${en})`;
+    typeSel.appendChild(o);
+  }
+  typeSel.onchange = () => { state.drinkType = typeSel.value; render(); };
 
   document.querySelectorAll('#qrSeg button').forEach((b) => {
     b.onclick = () => { state.qrType = +b.dataset.i; paintQRSeg(); render(); };

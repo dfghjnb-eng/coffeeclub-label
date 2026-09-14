@@ -74,6 +74,21 @@
     <div class="steps" style="margin-top:10px;grid-template-columns:1fr" id="customSteps"></div>
   </div>
 
+  <!-- 라벨 크기 · 방향 · 형식 -->
+  <div class="card">
+    <div class="card-hd"><span class="sec">라벨 크기</span></div>
+    <div class="seg" id="sizeSeg" style="grid-template-columns:repeat(2,1fr)"></div>
+
+    <div class="card-hd" style="margin-top:14px"><span class="sec">방향</span></div>
+    <div class="seg" id="dirSeg" style="grid-template-columns:repeat(2,1fr)">
+      <button class="on" data-v="0">가로형</button>
+      <button data-v="1">세로형 (글자 90°)</button>
+    </div>
+
+    <div class="card-hd" style="margin-top:14px"><span class="sec">형식</span></div>
+    <select id="typeSelect"><option value="">— 없음 —</option></select>
+  </div>
+
   <!-- QR -->
   <div class="card">
     <div class="card-hd"><span class="sec">QR 코드 대상</span></div>
