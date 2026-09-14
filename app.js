@@ -35,7 +35,7 @@ const LABEL_SPECS = {
              gapMm: 3.0, labelX: 66,  backfeed: 704, ejectExtra: 36,
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
-             vertDx: 0, vertDy: 0, logo: true, logoH: 40,
+             vertDx: 0, vertDy: 16, logo: true, logoH: 40,   // vertDy: 위를 2mm 내림
              // 라벨이 크니 전부 24로 시작한다
              fonts: { fsNum: 24, fsMain: 24, fsSub: 24, fsTiny: 24, fsCustom: 24, fsDate: 24 } },
 };
