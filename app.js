@@ -91,6 +91,7 @@ const state = {
   qrType: 0,
   mode: 'usb',        // 'server' = 매장 인쇄 서버 경유 / 'usb' = 이 컴퓨터에 직접 연결
   aligned: false,     // 종이가 라벨 시작점에 맞춰져 있는지 (배출하면 깨짐)
+  alignedSize: null,  // 어떤 라벨 크기로 맞춘 정렬인지 (크기가 바뀌면 다시 맞춰야 한다)
   ejectedDots: 0,     // 배출로 앞으로 밀어낸 양 — 되감을 때 더해야 한다
   preset: null,       // 지금 수정 중인 프리셋 이름 (저장하면 여기에 덮어쓴다)
   labelSize: '30x15', // 라벨 크기
@@ -841,12 +842,13 @@ async function doPrint() {
       const bmp = labelToBitmap(buildOrder());
       await serverPost('print', {
         data: toBase64(bmp.data), height: bmp.height, copies,
+        size: state.labelSize,   // 크기마다 정렬 값이 다르다 — 반드시 같이 보낸다
       });
     } else {
       const bytes = labelToRaster(buildOrder());
       const jobs = [];
       // 정렬이 안 돼 있을 때만 캘리브 (빈 라벨 1장). 배출은 하지 않는다.
-      if (!state.aligned) {
+      if (!state.aligned || state.alignedSize !== state.labelSize) {
         for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
       }
       for (let i = 0; i < copies; i++) {
@@ -857,6 +859,7 @@ async function doPrint() {
       }
       await sendUSBJobs(jobs);
       state.aligned = true;
+      state.alignedSize = state.labelSize;
     }
     setStatus(`✓ 인쇄 완료 (${copies}장) · 뜯으려면 [배출]`);
   } catch (e) {
@@ -867,7 +870,7 @@ async function doPrint() {
 async function doEject() {
   busy(true, '배출 중…');
   try {
-    if (state.mode === 'server') await serverPost('eject');
+    if (state.mode === 'server') await serverPost('eject', { size: state.labelSize });
     else await sendUSB(ejectCommand());
     state.aligned = false;      // 배출하면 정렬이 깨진다
     {
@@ -883,11 +886,12 @@ async function doCalibrate() {
   busy(true, '캘리브레이션 중… (라벨 1장 소비)');
   try {
     if (state.mode === 'server') {
-      await serverPost('calibrate');
+      await serverPost('calibrate', { size: state.labelSize });
     } else {
       await sendUSB(calibrateCommand());
     }
     state.aligned = true;
+    state.alignedSize = state.labelSize;
     setStatus('✓ 캘리브레이션 완료');
   } catch (e) { setStatus('오류: ' + e.message); }
   finally { busy(false); }
