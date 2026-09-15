@@ -29,7 +29,7 @@ const LABEL_SPECS = {
   '30x15': { name: '30 × 15 mm', wMm: 30, hMm: 15, lw: 240, lh: 120,
              gapMm: 3.0, labelX: 126, backfeed: 312, ejectExtra: 36,
              pitchAdjust: 1, detail: false, divider: false,
-             vertDx: 0, vertDy: 0, logo: false, logoH: 0,
+             vertDx: 0, vertDy: 0, logo: false, logoH: 0, vertMargin: 0,
              fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
@@ -37,10 +37,11 @@ const LABEL_SPECS = {
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
              vertDx: 0, vertDy: 4, logo: true, logoH: 40,   // vertDy: 2mm 내렸다가 1.5mm 되당김
-             // 모든 항목을 켜고도 안 잘리는 최대값 (실측): 가로형 20, 세로형 16.
-             // 세로형은 글자가 흐르는 길이가 30mm뿐이라 더 작아야 한다.
+             vertMargin: 16,   // 세로형 네 변 여백 2mm
+             // 모든 항목을 켜고도 안 잘리는 최대값 (실측): 가로형 20, 세로형 14.
+             // 세로형은 글자가 흐르는 길이가 30mm뿐인 데다 네 변 여백 2mm 까지 빠진다.
              fonts:  { fsNum: 20, fsMain: 20, fsSub: 20, fsTiny: 20, fsCustom: 20, fsDate: 20 },
-             fontsV: { fsNum: 16, fsMain: 16, fsSub: 16, fsTiny: 16, fsCustom: 16, fsDate: 16 } },
+             fontsV: { fsNum: 14, fsMain: 14, fsSub: 14, fsTiny: 14, fsCustom: 14, fsDate: 14 } },
 };
 const sizeSpec = (k) => LABEL_SPECS[k] || LABEL_SPECS['30x15'];
 
@@ -374,21 +375,30 @@ let previewHits = [];
 let previewLayout = { CW: 0, CH: 0, vertical: false };
 
 function renderLabel(ctx, o) {
-  const hits = [];
-  const hit = (key, x, y, w, h) => {
-    if (key && w > 0 && h > 0) hits.push({ key, x, y, w, h });
-  };
   const ls = o.ls | 0, lg = o.lg | 0;
   const family = o.family;
   const sp = sizeSpec(o.size);
   const setFont = (px) => { ctx.font = `${px}px "${family}", sans-serif`; };
 
   // 세로형은 가로·세로를 바꿔 그린 뒤 마지막에 90도 돌린다
-  const CW = o.vertical ? sp.lh : sp.lw;
-  const CH = o.vertical ? sp.lw : sp.lh;
+  const FULL_W = o.vertical ? sp.lh : sp.lw;
+  const FULL_H = o.vertical ? sp.lw : sp.lh;
+  // 세로형은 네 변에 여백을 두고 그 안쪽에만 그린다.
+  // 돌리기 전 기준이라 어느 쪽으로 돌아가도 네 변이 똑같이 남는다.
+  const margin = o.vertical ? (sp.vertMargin || 0) : 0;
+  const CW = FULL_W - 2 * margin;
+  const CH = FULL_H - 2 * margin;
+
+  const hits = [];
+  const hit = (key, x, y, w, h) => {
+    // 누른 자리를 찾을 때 쓰므로 여백만큼 밀어서 기억한다
+    if (key && w > 0 && h > 0) hits.push({ key, x: x + margin, y: y + margin, w, h });
+  };
 
   ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, CW, CH);
+  ctx.fillRect(0, 0, FULL_W, FULL_H);
+  ctx.save();
+  ctx.translate(margin, margin);
   ctx.fillStyle = '#000';
   ctx.textBaseline = 'alphabetic';
 
@@ -546,10 +556,11 @@ function renderLabel(ctx, o) {
   };
 
   for (const key of o.order) parts[key] && parts[key]();
+  ctx.restore();
 
   if (o.collectHits) {
     previewHits = hits;
-    previewLayout = { CW, CH, vertical: !!o.vertical };
+    previewLayout = { CW: FULL_W, CH: FULL_H, vertical: !!o.vertical };
   }
 }
 
