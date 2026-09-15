@@ -649,7 +649,7 @@ function buildOrder() {
     date:     showDate ? $('dateInput').value.trim() : '',
     customText: $('customText').value,
     qrData:   qrURL(),
-    family:   FONTS[$('fontSelect').value] || 'HangangM',
+    family:   FONTS[$('fontSelect').value] || FONTS[DEFAULT_FONT_NAME],
     fsNum:    getStep('fsNum'),
     fsMain:   getStep('fsMain'),
     fsSub:    getStep('fsSub'),
@@ -1288,7 +1288,9 @@ async function loadSettings(id) {
   $('typeSelect').value = state.drinkType;
   setStep('lsSpin',   s.ls ?? 0);
   setStep('lgSpin',   s.lg ?? 0);
-  if (s.font && FONTS[s.font]) { $('fontSelect').value = s.font; paintFontPick(); }
+  // 저장된 폰트가 없는 커피면 기본값으로 되돌린다 (직전 커피의 폰트가 남지 않게)
+  $('fontSelect').value = (s.font && FONTS[s.font]) ? s.font : DEFAULT_FONT_NAME;
+  paintFontPick();
 
   state.qrType = s.qr_type ?? 0;
   $('qrCustom').value = s.qr_custom ?? '';
@@ -1436,10 +1438,11 @@ function paintQRSeg() {
 
 // ─────────── 폰트 고르기 (글꼴 모양을 보면서) ───────────
 const FONT_SAMPLE = '커피클럽 가나다 Coffee';
+const DEFAULT_FONT_NAME = '서울한강 Regular';   // 저장된 폰트가 없으면 늘 이걸로
 
 function paintFontPick() {
   const name = $('fontSelect').value;
-  const fam  = FONTS[name] || 'HangangM';
+  const fam  = FONTS[name] || FONTS[DEFAULT_FONT_NAME];
   $('fontPickName').textContent = name;
   const sm = $('fontPickSample');
   sm.textContent = FONT_SAMPLE;
@@ -1494,7 +1497,7 @@ async function loadPanelFonts() {
 
 // ─────────── 폰트 로딩 ───────────
 async function ensureFont() {
-  const fam = FONTS[$('fontSelect').value] || 'HangangM';
+  const fam = FONTS[$('fontSelect').value] || FONTS[DEFAULT_FONT_NAME];
   try {
     await document.fonts.load(`20px "${fam}"`, '가나다ABC123');
     await document.fonts.ready;
@@ -1538,7 +1541,7 @@ function init() {
     o.value = name; o.textContent = name;
     fs.appendChild(o);
   }
-  fs.value = '서울한강 Regular';
+  fs.value = DEFAULT_FONT_NAME;
   fs.onchange = () => { paintFontPick(); ensureFont(); };
 
   buildFontPanel();
