@@ -648,6 +648,17 @@ function renderLabelCanvas(o) {
   return cv;
 }
 
+/** 미리보기용 — 세로형은 글자가 바로 읽히도록 세워서 그린다.
+ *  인쇄는 renderLabelCanvas 로 눕혀서 나간다 (라벨 자체가 가로라서). */
+function renderPreviewCanvas(o) {
+  const sp = sizeSpec(o.size);
+  const cv = document.createElement('canvas');
+  cv.width  = o.vertical ? sp.lh : sp.lw;
+  cv.height = o.vertical ? sp.lw : sp.lh;
+  renderLabel(cv.getContext('2d'), o);
+  return cv;
+}
+
 // ─────────── 미리보기 ───────────
 let renderPending = false;
 function render() {
@@ -663,12 +674,14 @@ function render() {
     renderPending = false;
     const o = buildOrder();
     o.collectHits = true;          // 미리보기일 때만 글자 영역을 기억한다
-    const off = renderLabelCanvas(o);
+    const off = renderPreviewCanvas(o);
 
     const cv = $('previewCanvas');
     if (cv.width !== off.width * 3 || cv.height !== off.height * 3) {
       cv.width = off.width * 3; cv.height = off.height * 3;   // 라벨 비율 유지
     }
+    // 세워 놓으면 세로로 길어지므로 화면을 넘지 않게 묶어둔다
+    cv.style.maxHeight = o.vertical ? '58vh' : '';
     const ctx = cv.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = '#fff';
@@ -727,27 +740,23 @@ function editSet(key, v) {
   render();
 }
 
+// 미리보기는 그리기 좌표 그대로 보여주므로 (세로형도 세워서) 회전 계산이 필요 없다
+const previewScale = () => {
+  const r = $('previewCanvas').getBoundingClientRect();
+  return (previewLayout.CW ? r.width / previewLayout.CW : 1) || 1;   // 1도트 = 화면 몇 px
+};
+
 /** 그리기 좌표의 네모 → 화면(px) 네모 */
 function hitToScreen(box) {
-  const cv = $('previewCanvas');
-  const sp = sizeSpec(state.labelSize);
-  const k  = cv.getBoundingClientRect().width / sp.lw;   // 라벨 1도트 = 화면 k px
-  const { CH, vertical } = previewLayout;
-  const r = vertical
-    ? { x: CH - (box.y + box.h), y: box.x, w: box.h, h: box.w }   // 시계방향 90도
-    : { x: box.x, y: box.y, w: box.w, h: box.h };
-  return { x: r.x * k, y: r.y * k, w: r.w * k, h: r.h * k, k };
+  const k = previewScale();
+  return { x: box.x * k, y: box.y * k, w: box.w * k, h: box.h * k, k };
 }
 
 /** 화면에서 누른 지점 → 그리기 좌표 */
 function screenToHit(clientX, clientY) {
-  const cv = $('previewCanvas');
-  const r  = cv.getBoundingClientRect();
-  const sp = sizeSpec(state.labelSize);
-  const k  = r.width / sp.lw;
-  const lx = (clientX - r.left) / k, ly = (clientY - r.top) / k;
-  const { CH, vertical } = previewLayout;
-  return vertical ? { x: ly, y: CH - lx } : { x: lx, y: ly };
+  const r = $('previewCanvas').getBoundingClientRect();
+  const k = previewScale();
+  return { x: (clientX - r.left) / k, y: (clientY - r.top) / k };
 }
 
 function findHit(clientX, clientY) {
@@ -787,20 +796,10 @@ function openEditor(box) {
   el.placeholder = f.label;
   host.appendChild(el);
 
-  // 세로형은 글자가 아래로 흐르므로 입력칸도 시계방향 90도로 눕힌다
-  if (previewLayout.vertical) {
-    host.style.left = `${r.x + r.w}px`;
-    host.style.top  = `${r.y}px`;
-    host.style.width  = `${Math.max(60, r.h)}px`;
-    host.style.height = `${Math.max(22, r.w)}px`;
-    host.style.transformOrigin = '0 0';
-    host.style.transform = 'rotate(90deg)';
-  } else {
-    host.style.left = `${r.x}px`;
-    host.style.top  = `${r.y}px`;
-    host.style.width  = `${Math.max(60, r.w)}px`;
-    host.style.height = `${Math.max(22, r.h)}px`;
-  }
+  host.style.left = `${r.x}px`;
+  host.style.top  = `${r.y}px`;
+  host.style.width  = `${Math.max(60, r.w)}px`;
+  host.style.height = `${Math.max(22, r.h)}px`;
   wrap.appendChild(host);
   editorEl = host; editorKey = box.key;
 
