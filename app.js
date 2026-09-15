@@ -29,7 +29,7 @@ const LABEL_SPECS = {
   '30x15': { name: '30 × 15 mm', wMm: 30, hMm: 15, lw: 240, lh: 120,
              gapMm: 3.0, labelX: 126, backfeed: 312, ejectExtra: 36,
              pitchAdjust: 1, detail: false, divider: false,
-             vertDx: 0, vertDy: 0, logo: false, logoH: 0, vertMargin: 0,
+             vertDx: 0, vertDy: 0, logo: false, logoH: 0, vertMargin: 0, qrV: 0,
              fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
@@ -38,10 +38,11 @@ const LABEL_SPECS = {
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
              vertDx: 0, vertDy: 4, logo: true, logoH: 40,   // vertDy: 2mm 내렸다가 1.5mm 되당김
              vertMargin: 16,   // 세로형 네 변 여백 2mm
-             // 모든 항목을 켜고도 안 잘리는 최대값 (실측): 가로형 20, 세로형 14.
-             // 세로형은 글자가 흐르는 길이가 30mm뿐인 데다 네 변 여백 2mm 까지 빠진다.
+             qrV: 88,          // 세로형 QR 크기 11mm (줄인 만큼 글자를 16pt 로)
+             // 모든 항목을 켜고도 안 잘리는 최대값 (실측): 가로형 20, 세로형 16.
+             // 세로형은 QR 을 11mm 로 줄여 확보한 자리 덕에 16pt 까지 올라간다.
              fonts:  { fsNum: 20, fsMain: 20, fsSub: 20, fsTiny: 20, fsCustom: 20, fsDate: 20 },
-             fontsV: { fsNum: 14, fsMain: 14, fsSub: 14, fsTiny: 14, fsCustom: 14, fsDate: 14 } },
+             fontsV: { fsNum: 16, fsMain: 16, fsSub: 16, fsTiny: 16, fsCustom: 16, fsDate: 16 } },
 };
 const sizeSpec = (k) => LABEL_SPECS[k] || LABEL_SPECS['30x15'];
 
@@ -414,6 +415,7 @@ function renderLabel(ctx, o) {
   let QR_SIZE, qrX, qrY, textMaxW, MAX_Y;
   if (qrBottom) {
     QR_SIZE  = Math.min(Math.floor(CW * 0.62), Math.floor(CH / 3));
+    if (sp.qrV) QR_SIZE = Math.min(QR_SIZE, sp.qrV);   // 크기를 직접 정해두면 그 값
     qrX      = Math.floor((CW - QR_SIZE) / 2);
     qrY      = CH - QR_SIZE - (o.showDetails ? 14 : 4);
     textMaxW = CW - 8;
