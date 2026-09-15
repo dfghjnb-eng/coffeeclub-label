@@ -738,8 +738,16 @@ function render() {
     if (cv.width !== off.width * 3 || cv.height !== off.height * 3) {
       cv.width = off.width * 3; cv.height = off.height * 3;   // 라벨 비율 유지
     }
-    // 세워 놓으면 세로로 길어지므로 화면을 넘지 않게 묶어둔다
-    cv.style.maxHeight = o.vertical ? '58vh' : '';
+    // 세워 놓으면 세로로 길어지므로 화면을 넘지 않게 묶어둔다.
+    // CSS 가 width:100% 라 max-height 로 묶으면 높이만 깎여 비율이 찌그러진다.
+    // 그래서 높이 대신 '폭'을 제한해 height:auto 가 비율을 지키게 한다.
+    cv.style.maxHeight = '';
+    if (o.vertical) {
+      const maxH = Math.round(window.innerHeight * 0.58);
+      cv.style.maxWidth = Math.min(440, Math.round(maxH * off.width / off.height)) + 'px';
+    } else {
+      cv.style.maxWidth = '';      // CSS 기본값(440px)
+    }
     const ctx = cv.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = '#fff';
