@@ -29,7 +29,7 @@ const LABEL_SPECS = {
   '30x15': { name: '30 × 15 mm', wMm: 30, hMm: 15, lw: 240, lh: 120,
              gapMm: 3.0, labelX: 126, backfeed: 312, ejectExtra: 36,
              pitchAdjust: 1, detail: false, divider: false,
-             vertDx: 0, vertDy: 0, logo: false, logoH: 0, vertMargin: 0, qrV: 0,
+             vertDx: 0, vertDy: 0, logo: false, logoH: 0, margin: 0, qrV: 0, qrH: 0,
              fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
@@ -37,11 +37,11 @@ const LABEL_SPECS = {
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
              vertDx: 0, vertDy: 4, logo: true, logoH: 40,   // vertDy: 2mm 내렸다가 1.5mm 되당김
-             vertMargin: 16,   // 세로형 네 변 여백 2mm
-             qrV: 80,          // 세로형 QR 크기 10mm (줄인 만큼 글자를 16pt 로)
-             // 모든 항목을 켜고도 안 잘리는 최대값 (실측): 가로형 20, 세로형 16.
-             // 세로형은 QR 을 11mm 로 줄여 확보한 자리 덕에 16pt 까지 올라간다.
-             fonts:  { fsNum: 20, fsMain: 20, fsSub: 20, fsTiny: 20, fsCustom: 20, fsDate: 20 },
+             margin: 16,       // 네 변 여백 2mm — 가로형·세로형 모두
+             qrV: 80, qrH: 80, // QR 크기 10mm (줄인 만큼 글자를 키웠다)
+             // 모든 항목을 켜고도 안 잘리는 최대값 (실측): 가로형 15, 세로형 16.
+             // 네 변 여백 2mm 와 '자세히 보기' 자리를 뺀 나머지 기준이다.
+             fonts:  { fsNum: 15, fsMain: 15, fsSub: 15, fsTiny: 15, fsCustom: 15, fsDate: 15 },
              fontsV: { fsNum: 16, fsMain: 16, fsSub: 16, fsTiny: 16, fsCustom: 16, fsDate: 16 } },
 };
 const sizeSpec = (k) => LABEL_SPECS[k] || LABEL_SPECS['30x15'];
@@ -61,6 +61,8 @@ let logoImg = null;
 const DRINK_TYPES = [
   ['커스텀 아메리카노',   'Custom Americano'],
   ['하이엔드 아메리카노', 'High-end Americano'],
+  ['커스텀 라떼',         'Custom Latte'],
+  ['하이엔드 라떼',       'High-end Latte'],
   ['드립',               'Drip'],
   ['하이엔드 드립',       'High-end Drip'],
 ];
@@ -74,27 +76,82 @@ const LS_PRESETS  = 'coffeeclub.printer.presets';
 const LS_CALIB    = 'coffeeclub.printer.calibrated';
 
 const FONTS = {
-  '서울한강 Light':          'HangangL',
-  '서울한강 Regular':        'HangangM',
-  '서울한강 Bold':           'HangangB',
-  '서울한강 ExtraBold':      'HangangEB',
+  '서울한강 Light':         'HangangL',
+  '서울한강 Regular':       'HangangM',
+  '서울한강 Bold':          'HangangB',
+  '서울한강 ExtraBold':     'HangangEB',
   '서울한강 장체 Light':      'HangangJL',
   '서울한강 장체 Medium':     'HangangJM',
   '서울한강 장체 Bold':       'HangangJB',
   '서울한강 장체 ExtraBold':  'HangangJEB',
-  '서울남산 Light':          'NamsanL',
-  '서울남산 Regular':        'NamsanM',
-  '서울남산 Bold':           'NamsanB',
-  '서울남산 ExtraBold':      'NamsanEB',
+  '서울남산 Light':         'NamsanL',
+  '서울남산 Regular':       'NamsanM',
+  '서울남산 Bold':          'NamsanB',
+  '서울남산 ExtraBold':     'NamsanEB',
   '서울남산 장체 Light':      'NamsanJL',
   '서울남산 장체 Medium':     'NamsanJM',
   '서울남산 장체 Bold':       'NamsanJB',
   '서울남산 장체 ExtraBold':  'NamsanJEB',
-  'BM 도현':                'Dohyeon',
-  '한글누리 Regular':        'NuriR',
-  '한글누리 Bold':           'NuriB',
-  '시스템 고딕':             'Apple SD Gothic Neo',
+  '한글누리 Regular':       'NuriR',
+  '한글누리 Bold':          'NuriB',
+  '나눔고딕':               'NanumGothicRegular',
+  '나눔고딕 Bold':          'NanumGothicBold',
+  '나눔고딕 ExtraBold':     'NanumGothicExtraBold',
+  '고딕A1 Light':         'GothicA1Light',
+  '고딕A1':               'GothicA1Regular',
+  '고딕A1 Bold':          'GothicA1Bold',
+  '고딕A1 Black':         'GothicA1Black',
+  '노토 산스':              'NotoSansKRRegular',
+  'IBM 플렉스':            'IBMPlexSansKRRegular',
+  'IBM 플렉스 Bold':       'IBMPlexSansKRBold',
+  '해바라기 Light':         'SunflowerLight',
+  '해바라기':               'SunflowerMedium',
+  '해바라기 Bold':          'SunflowerBold',
+  '동글 Light':           'DongleLight',
+  '동글':                 'DongleRegular',
+  '동글 Bold':            'DongleBold',
+  '나눔명조':               'NanumMyeongjoRegular',
+  '나눔명조 Bold':          'NanumMyeongjoBold',
+  '송명':                 'SongMyungRegular',
+  '고운바탕':               'GowunBatangRegular',
+  '고운바탕 Bold':          'GowunBatangBold',
+  '고운돋움':               'GowunDodumRegular',
+  '함렛':                 'HahmletRegular',
+  '디필레이아':              'DiphylleiaRegular',
+  '나눔손글씨 펜':            'NanumPenScriptRegular',
+  '나눔손글씨 붓':            'NanumBrushScriptRegular',
+  '개구 Light':           'GaeguLight',
+  '개구':                 'GaeguRegular',
+  '개구 Bold':            'GaeguBold',
+  '감자꽃':                'GamjaFlowerRegular',
+  '하이멜로디':              'HiMelodyRegular',
+  '푸어스토리':              'PoorStoryRegular',
+  '싱글데이':               'SingleDayRegular',
+  '큐트':                 'CuteFontRegular',
+  '연성':                 'YeonSungRegular',
+  '기랑해랑':               'KirangHaerangRegular',
+  '동해독도':               'EastSeaDokdoRegular',
+  '스타일리시':              'StylishRegular',
+  'BM 도현':              'Dohyeon',
+  '검은고딕':               'BlackHanSansRegular',
+  '주아':                 'JuaRegular',
+  '가속':                 'GasoekOneRegular',
+  '베이글팻':               'BagelFatOneRegular',
+  '모이라이':               'MoiraiOneRegular',
+  '나눔고딕코딩':             'NanumGothicCodingRegular',
+  '나눔고딕코딩 Bold':        'NanumGothicCodingBold',
+  '시스템 고딕':  'Apple SD Gothic Neo',
 };
+
+// 폰트 고르는 창에서 묶어 보여줄 분류
+const FONT_GROUPS = [
+  ['고딕', ['서울한강 Light', '서울한강 Regular', '서울한강 Bold', '서울한강 ExtraBold', '서울한강 장체 Light', '서울한강 장체 Medium', '서울한강 장체 Bold', '서울한강 장체 ExtraBold', '서울남산 Light', '서울남산 Regular', '서울남산 Bold', '서울남산 ExtraBold', '서울남산 장체 Light', '서울남산 장체 Medium', '서울남산 장체 Bold', '서울남산 장체 ExtraBold', '한글누리 Regular', '한글누리 Bold', '나눔고딕', '나눔고딕 Bold', '나눔고딕 ExtraBold', '고딕A1 Light', '고딕A1', '고딕A1 Bold', '고딕A1 Black', '노토 산스', 'IBM 플렉스', 'IBM 플렉스 Bold', '해바라기 Light', '해바라기', '해바라기 Bold', '동글 Light', '동글', '동글 Bold']],
+  ['명조', ['나눔명조', '나눔명조 Bold', '송명', '고운바탕', '고운바탕 Bold', '고운돋움', '함렛', '디필레이아']],
+  ['손글씨', ['나눔손글씨 펜', '나눔손글씨 붓', '개구 Light', '개구', '개구 Bold', '감자꽃', '하이멜로디', '푸어스토리', '싱글데이', '큐트', '연성', '기랑해랑', '동해독도', '스타일리시']],
+  ['장식', ['BM 도현', '검은고딕', '주아', '가속', '베이글팻', '모이라이']],
+  ['모노', ['나눔고딕코딩', '나눔고딕코딩 Bold']],
+  ['기본', ['시스템 고딕']],
+];
 
 const ORDER_LABELS = {
   type:            '🏷 형식',
@@ -386,7 +443,7 @@ function renderLabel(ctx, o) {
   const FULL_H = o.vertical ? sp.lw : sp.lh;
   // 세로형은 네 변에 여백을 두고 그 안쪽에만 그린다.
   // 돌리기 전 기준이라 어느 쪽으로 돌아가도 네 변이 똑같이 남는다.
-  const margin = o.vertical ? (sp.vertMargin || 0) : 0;
+  const margin = sp.margin || 0;
   const CW = FULL_W - 2 * margin;
   const CH = FULL_H - 2 * margin;
 
@@ -426,6 +483,7 @@ function renderLabel(ctx, o) {
     MAX_Y    = o.showQR ? qrY - logoBox - 6 : CH - 2;
   } else {
     QR_SIZE  = Math.min(CH <= 130 ? 82 : Math.floor(CH * 0.42), CH - 2 * M - detailsH - logoBox);
+    if (sp.qrH) QR_SIZE = Math.min(QR_SIZE, sp.qrH);
     qrX      = o.showQR ? CW - QR_SIZE - 6 : CW;
     qrY      = M + logoBox;
     textMaxW = o.showQR ? qrX - 8 : CW - 8;
@@ -1222,7 +1280,7 @@ async function loadSettings(id) {
   $('typeSelect').value = state.drinkType;
   setStep('lsSpin',   s.ls ?? 0);
   setStep('lgSpin',   s.lg ?? 0);
-  if (s.font && FONTS[s.font]) $('fontSelect').value = s.font;
+  if (s.font && FONTS[s.font]) { $('fontSelect').value = s.font; paintFontPick(); }
 
   state.qrType = s.qr_type ?? 0;
   $('qrCustom').value = s.qr_custom ?? '';
@@ -1368,6 +1426,64 @@ function paintQRSeg() {
   $('qrCustom').classList.toggle('hide', state.qrType !== 2);
 }
 
+// ─────────── 폰트 고르기 (글꼴 모양을 보면서) ───────────
+const FONT_SAMPLE = '커피클럽 가나다 Coffee';
+
+function paintFontPick() {
+  const name = $('fontSelect').value;
+  const fam  = FONTS[name] || 'HangangM';
+  $('fontPickName').textContent = name;
+  const sm = $('fontPickSample');
+  sm.textContent = FONT_SAMPLE;
+  sm.style.fontFamily = `"${fam}", sans-serif`;
+  document.querySelectorAll('#fontPanel button').forEach((b) =>
+    b.classList.toggle('on', b.dataset.name === name));
+}
+
+function buildFontPanel() {
+  const panel = $('fontPanel');
+  panel.innerHTML = '';
+  for (const [group, names] of FONT_GROUPS) {
+    const h = document.createElement('div');
+    h.className = 'grp';
+    h.textContent = `${group} · ${names.length}종`;
+    panel.appendChild(h);
+    for (const name of names) {
+      const fam = FONTS[name];
+      if (!fam) continue;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.name = name;
+      b.innerHTML = `<span class="nm"></span><span class="sm"></span>`;
+      b.querySelector('.nm').textContent = name;
+      const sm = b.querySelector('.sm');
+      sm.textContent = FONT_SAMPLE;
+      sm.style.fontFamily = `"${fam}", sans-serif`;
+      b.onclick = () => {
+        $('fontSelect').value = name;
+        $('fontPanel').classList.add('hide');
+        paintFontPick();
+        ensureFont();
+      };
+      panel.appendChild(b);
+    }
+  }
+}
+
+// 목록을 열면 그때 글꼴 파일을 받아온다 (한 번에 64개를 받지 않게)
+let fontPanelLoaded = false;
+async function loadPanelFonts() {
+  if (fontPanelLoaded) return;
+  fontPanelLoaded = true;
+  for (const [, names] of FONT_GROUPS) {
+    for (const name of names) {
+      const fam = FONTS[name];
+      if (!fam) continue;
+      try { await document.fonts.load(`20px "${fam}"`, FONT_SAMPLE); } catch {}
+    }
+  }
+}
+
 // ─────────── 폰트 로딩 ───────────
 async function ensureFont() {
   const fam = FONTS[$('fontSelect').value] || 'HangangM';
@@ -1415,7 +1531,19 @@ function init() {
     fs.appendChild(o);
   }
   fs.value = '서울한강 Regular';
-  fs.onchange = ensureFont;
+  fs.onchange = () => { paintFontPick(); ensureFont(); };
+
+  buildFontPanel();
+  paintFontPick();
+  $('fontPickBtn').onclick = () => {
+    const panel = $('fontPanel');
+    panel.classList.toggle('hide');
+    if (!panel.classList.contains('hide')) {
+      loadPanelFonts();
+      const on = panel.querySelector('button.on');
+      if (on) on.scrollIntoView({ block: 'center' });
+    }
+  };
 
   // 스핀박스
   const g = $('fontSteps');

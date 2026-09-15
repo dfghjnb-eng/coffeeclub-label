@@ -50,7 +50,13 @@
   <!-- 폰트 -->
   <div class="card">
     <div class="card-hd"><span class="sec">한글 폰트</span></div>
-    <select id="fontSelect"></select>
+    <!-- 값은 그대로 select 가 들고, 보이는 건 글꼴로 미리 보여주는 목록 -->
+    <select id="fontSelect" hidden></select>
+    <button type="button" id="fontPickBtn" class="fontpick">
+      <span id="fontPickName">서울한강 Regular</span>
+      <span id="fontPickSample">커피클럽 가나다 Coffee</span>
+    </button>
+    <div id="fontPanel" class="fontpanel hide"></div>
 
     <div class="card-hd" style="margin-top:16px">
       <span class="sec">폰트 크기</span>
