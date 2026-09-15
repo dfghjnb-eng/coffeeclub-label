@@ -1470,9 +1470,8 @@ function buildFontPanel() {
       b.dataset.fam  = fam;
       b.innerHTML = `<span class="nm"></span><span class="sm"></span>`;
       b.querySelector('.nm').textContent = name;
-      const sm = b.querySelector('.sm');
-      sm.textContent = FONT_SAMPLE;
-      sm.style.fontFamily = `"${fam}", sans-serif`;
+      b.querySelector('.sm').textContent = FONT_SAMPLE;
+      // 글꼴은 화면에 들어올 때 붙인다 (여기서 붙이면 67개를 다 받아버린다)
       b.onclick = () => {
         $('fontSelect').value = name;
         $('fontPanel').classList.add('hide');
@@ -1488,17 +1487,20 @@ function buildFontPanel() {
 // 글꼴 파일은 화면에 보이는 줄만 받아온다.
 // 67종을 한 번에 받으면 20MB 가까이 되어 폰에서 느리다.
 let fontObserver = null;
+const showRowFont = (row) => {
+  const sm = row.querySelector('.sm');
+  if (sm && !sm.style.fontFamily) sm.style.fontFamily = `"${row.dataset.fam}", sans-serif`;
+};
 function watchFontRow(panel, row) {
-  const pull = () => document.fonts.load(`20px "${row.dataset.fam}"`, FONT_SAMPLE).catch(() => {});
-  if (!('IntersectionObserver' in window)) { pull(); return; }
+  if (!('IntersectionObserver' in window)) { showRowFont(row); return; }
   if (!fontObserver) {
     fontObserver = new IntersectionObserver((entries) => {
       for (const e of entries) {
         if (!e.isIntersecting) continue;
         fontObserver.unobserve(e.target);
-        document.fonts.load(`20px "${e.target.dataset.fam}"`, FONT_SAMPLE).catch(() => {});
+        showRowFont(e.target);
       }
-    }, { root: panel, rootMargin: '300px' });
+    }, { root: panel, rootMargin: '250px' });
   }
   fontObserver.observe(row);
 }
