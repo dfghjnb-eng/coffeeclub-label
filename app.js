@@ -29,16 +29,18 @@ const LABEL_SPECS = {
   '30x15': { name: '30 × 15 mm', wMm: 30, hMm: 15, lw: 240, lh: 120,
              gapMm: 3.0, labelX: 126, backfeed: 312,
              // 배출 이송과 되감기는 한 쌍 (되감기 = 이송 + 8). 같이 움직이면 인쇄는 그대로다
-             // 인쇄→배출을 반복하면 5mm 씩 밀려서 되감기를 40도트 더 준다
-             ejectFeed: 68, ejectBackfeed: 116,
+             // 배출 직후 ejectPull 만큼 물러나 절취선을 커팅바에 맞춘다.
+             // (ejectPull + ejectBackfeed) 합이 일정해야 인쇄 위치가 안 흔들린다
+             ejectFeed: 68, ejectPull: 40, ejectBackfeed: 76,
              pitchAdjust: 1, detail: false, divider: false,
              vertDx: 0, vertDy: 0, logo: false, logoH: 0, margin: 0, qrV: 0, qrH: 0,
              fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
              gapMm: 3.0, labelX: 66,  backfeed: 704,
-             // 인쇄→배출을 반복하면 5mm 씩 밀려서 되감기를 40도트 더 준다
-             ejectFeed: 68, ejectBackfeed: 116,
+             // 배출 직후 ejectPull 만큼 물러나 절취선을 커팅바에 맞춘다.
+             // (ejectPull + ejectBackfeed) 합이 일정해야 인쇄 위치가 안 흔들린다
+             ejectFeed: 68, ejectPull: 40, ejectBackfeed: 76,
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
              vertDx: 0, vertDy: 4, logo: true, logoH: 40,   // vertDy: 2mm 내렸다가 1.5mm 되당김
@@ -1593,7 +1595,11 @@ async function doEject() {
   busy(true, '배출 중…');
   try {
     if (state.mode === 'server') await serverPost('eject', { size: state.labelSize });
-    else await sendUSB(ejectCommand());
+    else {
+      await sendUSB(ejectCommand());
+      const pull = sizeSpec(state.labelSize).ejectPull;
+      if (pull) { await sleep(300); await sendUSB(backfeedCommand(pull)); }
+    }
     // 한 피치를 밀어 라벨이 완전히 나온다. 다음 인쇄 전에 한 장 + 1mm 를 되감아
     // 그 빈 라벨 위에 다시 찍는다 → 버려지는 라벨이 없다 (실기로 맞춘 값)
     state.ejectPending += sizeSpec(state.labelSize).ejectBackfeed;
