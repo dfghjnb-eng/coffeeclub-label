@@ -178,7 +178,8 @@ const state = {
   aligned: false,     // 종이가 라벨 시작점에 맞춰져 있는지 (배출하면 깨짐)
   alignedSize: null,  // 어떤 라벨 크기로 맞춘 정렬인지 (크기가 바뀌면 다시 맞춰야 한다)
   overrides: {},      // 미리보기에서 직접 고친 값 (비우면 커피 데이터 값으로 돌아간다)
-  shortcuts: [],      // 단축 버튼에 넣어둔 커피 id
+  shortcuts: [],      // 단축 버튼에 넣어둔 커피 / 블렌드
+  blendOnly: false,   // 블렌드(프리셋)만 찍는 중인지
   slotCount: 8,       // 단축 버튼 칸 수 (늘렸다 줄였다)
   ejectedDots: 0,     // 배출로 앞으로 밀어낸 양 — 되감을 때 더해야 한다
   preset: null,       // 지금 수정 중인 프리셋 이름 (저장하면 여기에 덮어쓴다)
@@ -701,8 +702,9 @@ function buildOrder() {
 function qrURL() {
   if (state.qrType === 1) return STORE_QR_URL;
   if (state.qrType === 2) return $('qrCustom').value.trim() || PUBLIC_BASE_URL;
-  const id = state.current?.id || '';
-  return `${PUBLIC_BASE_URL}/coffee/${id}`;
+  // 블렌드는 커피 페이지가 없으니 사이트 첫 화면으로
+  const id = state.blendOnly ? '' : (state.current?.id || '');
+  return id ? `${PUBLIC_BASE_URL}/coffee/${id}` : PUBLIC_BASE_URL;
 }
 
 /** 라벨 1장을 실제 크기 캔버스로 만들어 준다 (세로형이면 회전까지) */
@@ -1339,13 +1341,12 @@ function paintSlots() {
     b.className = 'slot ' + (c ? 'filled' : (preset ? 'onlypreset' : 'empty'));
     b.dataset.i = i;
 
-    const name = c ? c.name : (missing ? '없는 커피' : (preset ? '커피 없음' : '비어 있음'));
+    const name = c ? c.name : (missing ? '없는 커피' : (preset || '비어 있음'));
     b.innerHTML = `<span class="no"></span><span class="nm"></span>` +
-                  (preset ? `<span class="pz"></span>` : '') +
+                  (preset ? `<span class="pz">블렌드</span>` : '') +
                   (filled ? `<button type="button" class="x" aria-label="비우기">×</button>` : '');
     b.querySelector('.no').textContent = i + 1;
     b.querySelector('.nm').textContent = name;
-    if (preset) b.querySelector('.pz').textContent = `📝 ${preset}`;
     if (filled) {
       b.querySelector('.x').onclick = (e) => { e.stopPropagation(); setSlot(i, { c: '', p: '' }); };
     }
@@ -1353,7 +1354,7 @@ function paintSlots() {
     if (missing) {
       b.onclick = () => setStatus('저장된 커피를 목록에서 찾지 못했어요. × 로 비워주세요.');
     } else if (filled) {
-      b.title = `${name}${preset ? ' · ' + preset : ''} — 누르면 바로 인쇄`;
+      b.title = `${preset ? '블렌드 ' : ''}${name} — 누르면 바로 인쇄`;
       b.onclick = () => runShortcut(i);
     } else {
       b.title = '커피나 프리셋을 끌어다 놓거나, 눌러서 지금 커피를 넣으세요';
@@ -1373,11 +1374,15 @@ async function saveShortcuts() {
     JSON.stringify({ n: state.slotCount, ids: state.shortcuts }));
 }
 
-/** patch 에 준 것만 바꾼다 — 커피만, 프리셋만 따로 넣을 수 있게 */
+/** 칸 하나에는 커피 '또는' 프리셋 하나만 둔다.
+ *  프리셋은 원두에 덧붙이는 메모가 아니라 그 자체로 완결된 블렌드라
+ *  둘을 같이 넣으면 서로 다른 제품 둘이 한 라벨에 찍힌다. */
 async function setSlot(i, patch) {
   const cur = slotOf(i);
-  const next = { c: patch.c === undefined ? cur.c : patch.c,
-                 p: patch.p === undefined ? cur.p : patch.p };
+  let next;
+  if (patch.c !== undefined)      next = { c: patch.c, p: patch.c ? '' : cur.p };
+  else if (patch.p !== undefined) next = { c: patch.p ? '' : cur.c, p: patch.p };
+  else                            next = cur;
   state.shortcuts[i] = (next.c || next.p) ? next : '';
   paintSlots();
   try {
@@ -1425,32 +1430,39 @@ function paintSlotBar() {
 }
 
 /** 단축 버튼 누르면: 그 커피로 바꾸고 설정까지 불러온 뒤 바로 인쇄 */
+// 블렌드(프리셋)를 찍을 땐 끄는 항목들 — 원두 고유 정보라 블렌드에는 맞지 않는다
+const COFFEE_ONLY = ['roasting_coffee', 'note', 'detail'];
+
 async function runShortcut(i) {
   const { c: id, p: preset } = slotOf(i);
   const c = id ? state.coffees.find((x) => x.id === id) : null;
   if (id && !c) { setStatus('저장된 커피를 찾지 못했어요.'); return; }
+  if (!c && !preset) return;
+
   const type = state.drinkType, dateOn = $('dateCheck').checked, halfOn = $('quickHalf').checked;
+
   if (c) {
+    state.blendOnly = false;
     $('coffeeSelect').value = id;
     state.current = c;
     $('flavor').textContent = c.flavor_notes || '—';
     paintDragChip();
     await loadSettings(id);      // 그 커피에 저장해 둔 폰트·크기·문구까지 그대로
-  }
-  if (preset) {                  // 칸에 프리셋이 있으면 추가 텍스트를 그것으로 덮는다
+  } else {
+    // ── 블렌드 칸 ── 원두 정보는 끄고 블렌드 문구만 찍는다
     const presets = await remote.load('presets');
-    if (presets[preset] === undefined) {
-      setStatus(`프리셋 '${preset}' 을 찾지 못했어요.`);
-    } else {
-      $('customText').value = presets[preset];
-      state.preset = preset;
-      $('presetSelect').value = preset;
-      markPreset();
-      state.checked.add('custom');
-      buildOrderList();
-    }
+    if (presets[preset] === undefined) { setStatus(`프리셋 '${preset}' 을 찾지 못했어요.`); return; }
+    state.blendOnly = true;
+    $('customText').value = presets[preset];
+    state.preset = preset;
+    $('presetSelect').value = preset;
+    markPreset();
+    for (const k of COFFEE_ONLY) state.checked.delete(k);
+    state.checked.add('custom');
+    buildOrderList();
   }
-  // 형식·날짜는 방금 버튼으로 고른 것이 이긴다 (저장된 값이 덮어쓰지 않게)
+
+  // 형식·날짜·하프카페인은 방금 버튼으로 고른 것이 이긴다
   setDrinkType(type);
   setQuickDate(dateOn);
   $('quickHalf').checked = halfOn;
@@ -1577,6 +1589,7 @@ function selectCoffee(id) {
   const c = state.coffees.find((x) => x.id === id);
   if (!c) return;
   state.current = c;
+  state.blendOnly = false;
   $('flavor').textContent = c.flavor_notes || '—';
   paintDragChip();
   loadSettings(id);
