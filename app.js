@@ -177,6 +177,7 @@ const state = {
   alignedSize: null,  // 어떤 라벨 크기로 맞춘 정렬인지 (크기가 바뀌면 다시 맞춰야 한다)
   overrides: {},      // 미리보기에서 직접 고친 값 (비우면 커피 데이터 값으로 돌아간다)
   shortcuts: [],      // 단축 버튼에 넣어둔 커피 id
+  slotCount: 8,       // 단축 버튼 칸 수 (늘렸다 줄였다)
   ejectedDots: 0,     // 배출로 앞으로 밀어낸 양 — 되감을 때 더해야 한다
   preset: null,       // 지금 수정 중인 프리셋 이름 (저장하면 여기에 덮어쓴다)
   labelSize: '30x15', // 라벨 크기
@@ -1147,6 +1148,59 @@ async function serverPost(path, body) {
 }
 
 // ─────────── 단축 버튼 ───────────
+/** 형식 버튼 — 고르면 라벨 맨 위에 찍히도록 순서까지 올린다 */
+function paintTypeSeg() {
+  const seg = $('typeSeg');
+  if (!seg) return;
+  if (!seg.children.length) {
+    const mk = (ko, label) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.v = ko;
+      b.textContent = label;
+      b.onclick = () => setDrinkType(ko);
+      seg.appendChild(b);
+    };
+    mk('', '없음');
+    for (const [ko] of DRINK_TYPES) mk(ko, ko);
+  }
+  seg.querySelectorAll('button').forEach((b) =>
+    b.classList.toggle('on', b.dataset.v === (state.drinkType || '')));
+}
+
+function setDrinkType(ko) {
+  state.drinkType = ko || '';
+  if (state.drinkType) {
+    state.checked.add('type');
+    // 형식은 라벨 제일 위에 — 순서를 맨 앞으로 끌어올린다
+    state.order = ['type', ...state.order.filter((k) => k !== 'type')];
+  } else {
+    state.checked.delete('type');
+  }
+  buildOrderList();
+  paintTypeSeg();
+  render();
+}
+
+/** 날짜 스위치 — 켜면 언제나 오늘 날짜 */
+function paintDateSwitch() {
+  const sw = $('quickDate');
+  if (!sw) return;
+  sw.checked = $('dateCheck').checked;
+  const t = $('todayText');
+  if (t) t.textContent = todayStr();
+}
+
+function setQuickDate(on) {
+  $('dateCheck').checked = !!on;
+  if (on) $('dateInput').value = todayStr();     // 늘 당일로 새로 맞춘다
+  syncDateInput();
+  if (on) state.checked.add('date'); else state.checked.delete('date');
+  buildOrderList();
+  paintDateSwitch();
+  render();
+}
+
 /** 칩을 끌어 칸에 넣기.
  *  · HTML 기본 드래그(draggable)는 폰·태블릿에서 아예 동작하지 않는다.
  *  · setPointerCapture 는 중간에 풀려 pointerup 을 놓치는 일이 있다.
@@ -1219,7 +1273,7 @@ function initChipDrag() {
 // 칸에 커피를 끌어다 넣어두면 누르는 즉시 그 커피로 인쇄한다.
 // 저장은 프리셋 테이블에 예약된 이름으로 얹어둔다 — 맥·웹·폰이 같이 본다.
 const SHORTCUT_KEY = '__shortcuts__';
-const SLOT_COUNT = 8;
+const SLOT_MIN = 4, SLOT_MAX = 40, SLOT_STEP = 4;
 
 function paintDragChip() {
   const el = $('dragChip');
@@ -1237,7 +1291,7 @@ function paintSlots() {
   const wrap = $('shortcutSlots');
   if (!wrap) return;
   wrap.innerHTML = '';
-  for (let i = 0; i < SLOT_COUNT; i++) {
+  for (let i = 0; i < state.slotCount; i++) {
     const id = state.shortcuts[i] || '';
     const c  = id ? state.coffees.find((x) => x.id === id) : null;
     const b  = document.createElement('button');
@@ -1283,13 +1337,19 @@ function paintSlots() {
     });
     wrap.appendChild(b);
   }
+  paintSlotBar();
+}
+
+async function saveShortcuts() {
+  await remote.saveOne('presets', SHORTCUT_KEY,
+    JSON.stringify({ n: state.slotCount, ids: state.shortcuts }));
 }
 
 async function setShortcut(i, id) {
   state.shortcuts[i] = id;
   paintSlots();
   try {
-    await remote.saveOne('presets', SHORTCUT_KEY, JSON.stringify(state.shortcuts));
+    await saveShortcuts();
     const c = id ? state.coffees.find((x) => x.id === id) : null;
     setStatus(c ? `✓ ${i + 1}번에 ${c.name} 저장` : `✓ ${i + 1}번 비웠습니다`);
   } catch (e) {
@@ -1299,10 +1359,36 @@ async function setShortcut(i, id) {
 
 async function loadShortcuts(presets) {
   const raw = presets ? presets[SHORTCUT_KEY] : (await remote.load('presets'))[SHORTCUT_KEY];
-  let list = [];
-  try { list = JSON.parse(raw || '[]'); } catch {}
-  state.shortcuts = Array.isArray(list) ? list.slice(0, SLOT_COUNT) : [];
+  let saved = null;
+  try { saved = JSON.parse(raw || 'null'); } catch {}
+  // 예전에는 배열만 저장했다 — 그것도 그대로 읽는다
+  const ids = Array.isArray(saved) ? saved : (saved && Array.isArray(saved.ids) ? saved.ids : []);
+  const n   = (saved && +saved.n) || Math.max(SLOT_MIN, Math.ceil(ids.length / SLOT_STEP) * SLOT_STEP) || 8;
+  state.slotCount = Math.min(SLOT_MAX, Math.max(SLOT_MIN, n));
+  state.shortcuts = ids.slice(0, SLOT_MAX);
   paintSlots();
+}
+
+async function changeSlotCount(delta) {
+  const next = Math.min(SLOT_MAX, Math.max(SLOT_MIN, state.slotCount + delta));
+  if (next === state.slotCount) return;
+  if (next < state.slotCount) {
+    // 줄일 자리에 커피가 들어 있으면 먼저 알린다
+    const doomed = state.shortcuts.slice(next, state.slotCount).filter(Boolean);
+    if (doomed.length) { setStatus('줄이려는 칸이 비어 있어야 합니다.'); return; }
+    state.shortcuts = state.shortcuts.slice(0, next);
+  }
+  state.slotCount = next;
+  paintSlots();
+  try { await saveShortcuts(); setStatus(`✓ 단축 버튼 ${next}칸`); }
+  catch (e) { setStatus('저장 실패: ' + e.message); }
+}
+
+function paintSlotBar() {
+  const minus = $('slotMinus'), plus = $('slotPlus');
+  if (!minus || !plus) return;
+  minus.disabled = state.slotCount <= SLOT_MIN;
+  plus.disabled  = state.slotCount >= SLOT_MAX;
 }
 
 /** 단축 버튼 누르면: 그 커피로 바꾸고 설정까지 불러온 뒤 바로 인쇄 */
@@ -1314,7 +1400,11 @@ async function runShortcut(i) {
   state.current = c;
   $('flavor').textContent = c.flavor_notes || '—';
   paintDragChip();
+  const type = state.drinkType, dateOn = $('dateCheck').checked;
   await loadSettings(id);        // 그 커피에 저장해 둔 폰트·크기·문구까지 그대로
+  // 형식·날짜는 방금 버튼으로 고른 것이 이긴다 (저장된 값이 덮어쓰지 않게)
+  setDrinkType(type);
+  setQuickDate(dateOn);
   render();
   await doPrint();
 }
@@ -1465,7 +1555,7 @@ async function loadSettings(id) {
     b.classList.toggle('on', b.dataset.key === state.labelSize));
   document.querySelectorAll('#dirSeg button').forEach((b) =>
     b.classList.toggle('on', (b.dataset.v === '1') === state.vertical));
-  $('typeSelect').value = state.drinkType;
+  paintTypeSeg();
   setStep('lsSpin',   s.ls ?? 0);
   setStep('lgSpin',   s.lg ?? 0);
   // 저장된 폰트가 없는 커피면 기본값으로 되돌린다 (직전 커피의 폰트가 남지 않게)
@@ -1487,6 +1577,7 @@ async function loadSettings(id) {
   $('dateCheck').checked  = s.date_check   ?? false;
   $('dateInput').value    = s.date || todayStr();
   syncDateInput();
+  paintDateSwitch();
   ensureFont();
 }
 
@@ -1765,7 +1856,7 @@ function init() {
   $('customText').oninput = render;
   $('qrCustom').oninput = render;
   $('dateInput').oninput = render;
-  $('dateCheck').onchange = () => { syncDateInput(); render(); };
+  $('dateCheck').onchange = () => { syncDateInput(); paintDateSwitch(); render(); };
   $('visQR').onchange = render;
   $('visDetails').onchange = render;
   $('dateInput').value = todayStr();
@@ -1798,14 +1889,12 @@ function init() {
     };
   });
 
-  // 형식
-  const typeSel = $('typeSelect');
-  for (const [ko, en] of DRINK_TYPES) {
-    const o = document.createElement('option');
-    o.value = ko; o.textContent = `${ko}  (${en})`;
-    typeSel.appendChild(o);
-  }
-  typeSel.onchange = () => { state.drinkType = typeSel.value; render(); };
+  // 형식 버튼 · 날짜 스위치 · 칸 늘리기
+  paintTypeSeg();
+  paintDateSwitch();
+  $('quickDate').onchange = (e) => setQuickDate(e.target.checked);
+  $('slotPlus').onclick  = () => changeSlotCount(+SLOT_STEP);
+  $('slotMinus').onclick = () => changeSlotCount(-SLOT_STEP);
 
   document.querySelectorAll('#qrSeg button').forEach((b) => {
     b.onclick = () => { state.qrType = +b.dataset.i; paintQRSeg(); render(); };

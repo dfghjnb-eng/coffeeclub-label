@@ -31,15 +31,29 @@
     <div class="flavor" id="flavor">—</div>
   </div>
 
-  <!-- 단축 버튼 -->
+  <!-- 빠른 인쇄: 형식 · 날짜 · 단축 버튼 -->
   <div class="card">
-    <div class="card-hd">
+    <div class="card-hd"><span class="sec">형식 · 라벨 맨 위에 찍힙니다</span></div>
+    <div class="seg wrap" id="typeSeg"></div>
+
+    <div class="switchrow">
+      <label class="sw">
+        <input type="checkbox" id="quickDate"><span class="track"></span>
+      </label>
+      <span class="swtext">날짜 찍기 — 언제나 오늘 날짜 <b id="todayText"></b></span>
+    </div>
+
+    <div class="card-hd" style="margin-top:16px">
       <span class="sec">단축 버튼</span>
       <div class="spacer"></div>
       <span class="sec swipe-tip" style="font-weight:500">아래 칩을 칸으로 끌어다 놓기</span>
     </div>
     <div id="dragChip" class="dragchip">커피를 먼저 고르세요</div>
     <div id="shortcutSlots" class="slots"></div>
+    <div class="slotbar">
+      <button type="button" class="pill mini" id="slotMinus">칸 줄이기</button>
+      <button type="button" class="pill mini" id="slotPlus">칸 늘리기</button>
+    </div>
   </div>
 
   <!-- 로스팅 · 날짜 -->
@@ -102,8 +116,6 @@
       <button data-v="1">세로형 (글자 90°)</button>
     </div>
 
-    <div class="card-hd" style="margin-top:14px"><span class="sec">형식</span></div>
-    <select id="typeSelect"><option value="">— 없음 —</option></select>
   </div>
 
   <!-- QR -->
