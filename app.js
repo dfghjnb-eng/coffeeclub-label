@@ -1019,6 +1019,7 @@ const calibrateCommand = () => {
  *   · BACKFEED 288이면 3mm 밀리고 312가 정확하다.
  */
 const ALIGN_WAIT = 2500;
+const EJECT_LABELS_BACK = 2;   // 배출 뒤 되감기에서 뺄 라벨 장수
 const BACKFEED_AFTER_ALIGN = 312;
 // 배출한 뒤에는 종이가 더 나가 있어 그만큼(+보정) 더 되감아야 한다.
 // 배출 이송량 112만 더하면 4.5mm 밀려서 36을 더한다. 둘 다 실기로 찾은 값.
@@ -1033,8 +1034,8 @@ const alignJobs = () => {
   let back = sp.backfeed;
   if (pre) {
     back += sp.ejectExtra;
-    // 앞으로 2장 나갔다가 3장이 감겨 이전 라벨에 겹쳤다 — 한 장 덜 감는다
-    back -= (sp.lh + Math.round(sp.gapMm * DPMM));
+    // 배출 뒤 되감기에서 뺄 라벨 장수. 겹치면 늘리고, 빈 라벨을 건너뛰면 줄인다
+    back -= EJECT_LABELS_BACK * (sp.lh + Math.round(sp.gapMm * DPMM));
   }
   state.ejectedDots = 0;
   const jobs = [];
