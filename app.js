@@ -1031,7 +1031,11 @@ const alignJobs = () => {
   const pre = state.ejectedDots;
   // ★ 배출 이송량과 한 쌍으로 실기에서 맞춘 값이다. 함께 테스트하지 않고 바꾸지 말 것.
   let back = sp.backfeed;
-  if (pre) back += sp.ejectExtra;
+  if (pre) {
+    back += sp.ejectExtra;
+    // 앞으로 2장 나갔다가 3장이 감겨 이전 라벨에 겹쳤다 — 한 장 덜 감는다
+    back -= (sp.lh + Math.round(sp.gapMm * DPMM));
+  }
   state.ejectedDots = 0;
   const jobs = [];
   if (pre) jobs.push(backfeedCommand(pre));
