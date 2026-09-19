@@ -1026,11 +1026,17 @@ const EJECT_BACKFEED_EXTRA = 36;
 const backfeedCommand = (dots) => new TextEncoder().encode(`BACKFEED ${dots}\r\n`);
 const alignJobs = () => {
   const sp = sizeSpec(state.labelSize);
+  // 배출한 뒤라면 밀어냈던 만큼 먼저 되감아 들인다.
+  // 그래야 캘리브가 뱉는 한 장만 나온다. 되감기 총량은 그대로라 인쇄 위치는 안 바뀐다.
+  const pre = state.ejectedDots;
   // ★ 배출 이송량과 한 쌍으로 실기에서 맞춘 값이다. 함께 테스트하지 않고 바꾸지 말 것.
-  let back = sp.backfeed + state.ejectedDots;
-  if (state.ejectedDots) back += sp.ejectExtra;
+  let back = sp.backfeed;
+  if (pre) back += sp.ejectExtra;
   state.ejectedDots = 0;
-  return [calibrateCommand(), backfeedCommand(back)];
+  const jobs = [];
+  if (pre) jobs.push(backfeedCommand(pre));
+  jobs.push(calibrateCommand(), backfeedCommand(back));
+  return jobs;
 };
 
 // ─────────── WebUSB ───────────
