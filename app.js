@@ -1147,6 +1147,75 @@ async function serverPost(path, body) {
 }
 
 // ─────────── 단축 버튼 ───────────
+/** 칩을 끌어 칸에 넣기.
+ *  · HTML 기본 드래그(draggable)는 폰·태블릿에서 아예 동작하지 않는다.
+ *  · setPointerCapture 는 중간에 풀려 pointerup 을 놓치는 일이 있다.
+ *  그래서 누른 뒤에는 window 에서 직접 받는다 — 마우스·손가락·펜 모두 같은 코드.
+ */
+function initChipDrag() {
+  const chip = $('dragChip');
+  if (!chip) return;
+  let ghost = null, dragging = false, sx = 0, sy = 0, hot = null;
+
+  const slotAt = (x, y) => {
+    const el = document.elementFromPoint(x, y);
+    return el ? el.closest('#shortcutSlots .slot') : null;
+  };
+  const lightUp = (s) => {
+    if (s === hot) return;
+    if (hot) hot.classList.remove('over');
+    hot = s;
+    if (hot) hot.classList.add('over');
+  };
+  const cleanUp = () => {
+    if (hot) hot.classList.remove('over');
+    hot = null;
+    if (ghost) ghost.remove();
+    ghost = null;
+    dragging = false;
+    chip.classList.remove('grabbing');
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', cleanUp);
+  };
+
+  function onMove(e) {
+    if (!dragging) {
+      if (Math.hypot(e.clientX - sx, e.clientY - sy) < 8) return;   // 탭과 구분
+      dragging = true;
+      chip.classList.add('grabbing');
+      ghost = document.createElement('div');
+      ghost.className = 'dragghost';
+      ghost.textContent = chip.textContent;
+      document.body.appendChild(ghost);
+    }
+    e.preventDefault();            // 끄는 동안 화면이 같이 스크롤되지 않게
+    ghost.style.left = `${e.clientX}px`;
+    ghost.style.top  = `${e.clientY}px`;
+    lightUp(slotAt(e.clientX, e.clientY));
+  }
+
+  function onUp(e) {
+    const wasDragging = dragging;
+    const s = wasDragging ? slotAt(e.clientX, e.clientY) : null;
+    const id = chip.dataset.id;
+    cleanUp();
+    if (!wasDragging) return;
+    if (s) setShortcut(+s.dataset.i, id);
+    else setStatus('칸 위에 놓아야 저장됩니다.');
+  }
+
+  chip.addEventListener('pointerdown', (e) => {
+    if (!chip.dataset.id) return;
+    sx = e.clientX; sy = e.clientY;
+    dragging = false;
+    window.addEventListener('pointermove', onMove, { passive: false });
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', cleanUp);
+  });
+}
+
+
 // 칸에 커피를 끌어다 넣어두면 누르는 즉시 그 커피로 인쇄한다.
 // 저장은 프리셋 테이블에 예약된 이름으로 얹어둔다 — 맥·웹·폰이 같이 본다.
 const SHORTCUT_KEY = '__shortcuts__';
@@ -1156,9 +1225,11 @@ function paintDragChip() {
   const el = $('dragChip');
   if (!el) return;
   const c = state.current;
-  el.textContent = c ? `☕ ${c.name}` : '커피를 먼저 고르세요';
+  el.textContent = c ? `⠿  ${c.name}` : '커피를 먼저 고르세요';
   el.classList.toggle('empty', !c);
-  el.draggable = !!c;
+  // draggable 을 켜면 브라우저가 기본 드래그를 시작하면서 포인터를 취소해버린다
+  // (pointercancel). 끌기는 initChipDrag 가 포인터 이벤트로 직접 처리한다.
+  el.draggable = false;
   el.dataset.id = c ? c.id : '';
 }
 
@@ -1796,12 +1867,7 @@ function init() {
   initPreviewEditing();   // 미리보기 글자를 눌러 바로 고치기
 
   // 단축 버튼 — 지금 커피를 끌어다 칸에 넣는다
-  const chip = $('dragChip');
-  chip.addEventListener('dragstart', (e) => {
-    if (!chip.dataset.id) { e.preventDefault(); return; }
-    e.dataTransfer.setData('text/plain', chip.dataset.id);
-    e.dataTransfer.effectAllowed = 'copy';
-  });
+  initChipDrag();
   paintDragChip();
   paintSlots();
 
