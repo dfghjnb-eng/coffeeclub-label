@@ -533,7 +533,8 @@ input:disabled { background:#f2f2f4; color:#aeaeb2; border-color:transparent; }
 .sw input:checked + .track::after { transform: translateX(21px); }
 
 /* ── 칸 늘리기/줄이기 ── */
-.slotbar { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+.slotbar { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.slotbar #ejectBtn2 { flex: 0 0 auto; min-width: 92px; }
 .slotbar button:disabled { opacity: .4; cursor: default; }
 
 /* 칸 안에서 프리셋 이름은 커피 아래 작게 */
@@ -543,5 +544,15 @@ input:disabled { background:#f2f2f4; color:#aeaeb2; border-color:transparent; }
   background: rgba(255,255,255,.22);
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.slot.empty .pz, .slot.onlypreset .pz { background: #f2f2f4; color: var(--ink-sub); }
-.slot.onlypreset { background: #fff; color: var(--ink); border-style: solid; }
+.slot.empty .pz { background: #f2f2f4; color: var(--ink-sub); }
+/* 추가텍스트(블렌드)로 만든 칸은 연두색으로 구분 */
+.slot.onlypreset {
+  background: #eaf7dc; border-color: #bcdf9c; border-style: solid;
+  color: #24361a;
+}
+.slot.onlypreset .no { opacity: .7; }
+.slot.onlypreset .pz { background: #cfeab4; color: #2f4a20; }
+
+/* 제목을 직접 적으면 형식 버튼은 흐리게 */
+.seg.wrap.dim button { opacity: .45; }
+.seg.wrap.dim button.on { opacity: .6; }

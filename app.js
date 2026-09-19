@@ -1187,10 +1187,26 @@ function paintTypeSeg() {
   }
   seg.querySelectorAll('button').forEach((b) =>
     b.classList.toggle('on', b.dataset.v === (state.drinkType || '')));
+  const t = $('typeTitle');
+  // 제목을 직접 적어두면 그게 형식 자리를 차지한다 → 버튼은 흐리게
+  if (t) seg.classList.toggle('dim', !!t.value.trim());
+}
+
+/** 제목 직접 입력 — 비우면 고른 형식이 다시 찍힌다 */
+function setTypeTitle(v) {
+  const t = (v || '').trim();
+  if (t) { state.overrides.type = t; state.checked.add('type'); state.order = ['type', ...state.order.filter((k) => k !== 'type')]; }
+  else   { delete state.overrides.type; if (!state.drinkType) state.checked.delete('type'); }
+  buildOrderList();
+  paintTypeSeg();
+  render();
 }
 
 function setDrinkType(ko) {
   state.drinkType = ko || '';
+  // 형식과 제목은 라벨에서 같은 자리다 — 버튼을 고르면 직접 쓴 제목은 비운다
+  if ($('typeTitle')) $('typeTitle').value = '';
+  delete state.overrides.type;
   if (state.drinkType) {
     state.checked.add('type');
     // 형식은 라벨 제일 위에 — 순서를 맨 앞으로 끌어올린다
@@ -1200,6 +1216,21 @@ function setDrinkType(ko) {
   }
   buildOrderList();
   paintTypeSeg();
+  render();
+}
+
+/** 세로형 스위치 — 위쪽 방향 버튼과 늘 같은 값을 본다 */
+function paintVerticalSwitch() {
+  const sw = $('quickVertical');
+  if (sw) sw.checked = !!state.vertical;
+  document.querySelectorAll('#dirSeg button').forEach((b) =>
+    b.classList.toggle('on', (b.dataset.v === '1') === !!state.vertical));
+}
+
+function setVertical(on) {
+  state.vertical = !!on;
+  paintVerticalSwitch();
+  applySizeFonts();       // 방향마다 기본 폰트가 다르다
   render();
 }
 
@@ -1439,7 +1470,9 @@ async function runShortcut(i) {
   if (id && !c) { setStatus('저장된 커피를 찾지 못했어요.'); return; }
   if (!c && !preset) return;
 
-  const type = state.drinkType, dateOn = $('dateCheck').checked, halfOn = $('quickHalf').checked;
+  const type = state.drinkType, dateOn = $('dateCheck').checked,
+        halfOn = $('quickHalf').checked, vert = state.vertical,
+        title = $('typeTitle').value;
 
   if (c) {
     state.blendOnly = false;
@@ -1463,7 +1496,10 @@ async function runShortcut(i) {
   }
 
   // 형식·날짜·하프카페인은 방금 버튼으로 고른 것이 이긴다
+  setVertical(vert);
   setDrinkType(type);
+  $('typeTitle').value = title;
+  setTypeTitle(title);
   setQuickDate(dateOn);
   $('quickHalf').checked = halfOn;
   render();
@@ -1538,7 +1574,9 @@ async function doCalibrate() {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const setStatus = (msg) => { $('status').textContent = msg; };
 function busy(on, msg) {
-  ['printBtn', 'ejectBtn', 'calibBtn'].forEach((id) => { $(id).disabled = on; });
+  ['printBtn', 'ejectBtn', 'ejectBtn2', 'calibBtn'].forEach((id) => {
+    const el = $(id); if (el) el.disabled = on;
+  });
   if (msg) setStatus(msg);
 }
 
@@ -1610,13 +1648,13 @@ async function loadSettings(id) {
   setStep('fsCustom', s.fs_custom ?? 11);
   setStep('fsDate',   s.fs_date ?? s.fs_sub ?? 11);
   state.overrides = (s.overrides && typeof s.overrides === 'object') ? { ...s.overrides } : {};
+  if ($('typeTitle')) $('typeTitle').value = state.overrides.type || '';
   state.labelSize = LABEL_SPECS[s.label_size] ? s.label_size : '30x15';
   state.vertical  = !!s.vertical;
   state.drinkType = s.drink_type || '';
   document.querySelectorAll('#sizeSeg button').forEach((b) =>
     b.classList.toggle('on', b.dataset.key === state.labelSize));
-  document.querySelectorAll('#dirSeg button').forEach((b) =>
-    b.classList.toggle('on', (b.dataset.v === '1') === state.vertical));
+  paintVerticalSwitch();
   paintTypeSeg();
   setStep('lsSpin',   s.ls ?? 0);
   setStep('lgSpin',   s.lg ?? 0);
@@ -1943,19 +1981,16 @@ function init() {
     sizeSeg.appendChild(b);
   }
 
-  // 방향
+  // 방향 — 위쪽 버튼과 빠른 스위치가 같은 일을 한다
   document.querySelectorAll('#dirSeg button').forEach((b) => {
-    b.onclick = () => {
-      state.vertical = b.dataset.v === '1';
-      document.querySelectorAll('#dirSeg button').forEach((x) =>
-        x.classList.toggle('on', x === b));
-      applySizeFonts();
-      render();
-    };
+    b.onclick = () => setVertical(b.dataset.v === '1');
   });
+  $('quickVertical').onchange = (e) => setVertical(e.target.checked);
+  $('typeTitle').oninput = (e) => setTypeTitle(e.target.value);
 
   // 형식 버튼 · 날짜 스위치 · 칸 늘리기
   paintTypeSeg();
+  paintVerticalSwitch();
   paintDateSwitch();
   $('quickDate').onchange = (e) => setQuickDate(e.target.checked);
   $('quickHalf').onchange = render;
@@ -2017,6 +2052,7 @@ function init() {
   $('connectBtn').onclick = connectPrinter;
   $('printBtn').onclick = doPrint;
   $('ejectBtn').onclick = doEject;
+  $('ejectBtn2').onclick = doEject;   // 단축 버튼 아래에도 하나 더
   $('calibBtn').onclick = doCalibrate;
 
   initPreviewEditing();   // 미리보기 글자를 눌러 바로 고치기
