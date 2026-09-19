@@ -29,16 +29,14 @@ const LABEL_SPECS = {
   '30x15': { name: '30 × 15 mm', wMm: 30, hMm: 15, lw: 240, lh: 120,
              gapMm: 3.0, labelX: 126, backfeed: 312,
              // 배출 이송과 되감기는 한 쌍 (되감기 = 이송 + 8). 같이 움직이면 인쇄는 그대로다
-             // 되감기 116 은 인쇄가 맞던 값이라 건드리지 않는다. 이송만 5mm 줄였다
-             ejectFeed: 28, ejectBackfeed: 116,
+             ejectExtra: 36,
              pitchAdjust: 1, detail: false, divider: false,
              vertDx: 0, vertDy: 0, logo: false, logoH: 0, margin: 0, qrV: 0, qrH: 0,
              fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
              gapMm: 3.0, labelX: 66,  backfeed: 704,
-             // 되감기 116 은 인쇄가 맞던 값이라 건드리지 않는다. 이송만 5mm 줄였다
-             ejectFeed: 28, ejectBackfeed: 116,
+             ejectExtra: 36,
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
              vertDx: 0, vertDy: 4, logo: true, logoH: 40,   // vertDy: 2mm 내렸다가 1.5mm 되당김
@@ -178,7 +176,7 @@ const state = {
   mode: 'usb',        // 'server' = 매장 인쇄 서버 경유 / 'usb' = 이 컴퓨터에 직접 연결
   aligned: false,     // 종이가 라벨 시작점에 맞춰져 있는지 (배출하면 깨짐)
   alignedSize: null,  // 어떤 라벨 크기로 맞춘 정렬인지 (크기가 바뀌면 다시 맞춰야 한다)
-  ejectPending: 0,    // 배출한 뒤 다음 인쇄 전에 되감을 양 (여러 번 눌러도 누적)
+  ejectedDots: 0,     // 배출로 앞으로 밀어낸 양 — 되감을 때 더해야 한다
   overrides: {},      // 미리보기에서 직접 고친 값 (비우면 커피 데이터 값으로 돌아간다)
   shortcuts: [],      // 단축 버튼에 넣어둔 커피 / 블렌드
   blendOnly: false,   // 블렌드(프리셋)만 찍는 중인지
@@ -986,8 +984,8 @@ function rasterCommand(bytesPerRow, height, data) {
 function ejectCommand() {
   const sp    = sizeSpec(state.labelSize);
   const gapPx = Math.round(sp.gapMm * DPMM);
-  // ★ 이 값과 ejectBackfeed 는 한 쌍이다 (되감기 = 이송 + 8).
-  const rows  = Math.max(1, sp.ejectFeed || (sp.lh + gapPx));
+  // ★ 이 값과 alignJobs 의 되감기는 한 쌍이다. 한쪽만 바꾸면 인쇄가 어긋난다.
+  const rows  = Math.max(1, sp.lh + gapPx - 32);
   const bytesPerRow = W_FULL / 8;
   return rasterCommand(bytesPerRow, rows, new Uint8Array(bytesPerRow * rows));
 }
@@ -1029,7 +1027,10 @@ const EJECT_BACKFEED_EXTRA = 36;
 const backfeedCommand = (dots) => new TextEncoder().encode(`BACKFEED ${dots}\r\n`);
 const alignJobs = () => {
   const sp = sizeSpec(state.labelSize);
-  let back = sp.backfeed;   // 배출은 정렬을 깨지 않으므로 보정이 없다
+  // ★ 배출 이송량과 한 쌍으로 실기에서 맞춘 값이다. 함께 테스트하지 않고 바꾸지 말 것.
+  let back = sp.backfeed + state.ejectedDots;
+  if (state.ejectedDots) back += sp.ejectExtra;
+  state.ejectedDots = 0;
   return [calibrateCommand(), backfeedCommand(back)];
 };
 
@@ -1567,11 +1568,6 @@ async function doPrint() {
       // 정렬이 안 돼 있을 때만 캘리브 (빈 라벨 1장). 배출은 하지 않는다.
       if (!state.aligned || state.alignedSize !== state.labelSize) {
         for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
-        state.ejectPending = 0;
-      } else if (state.ejectPending) {
-        // ★ 배출과 인쇄 사이에는 이 되감기 하나만 보낸다 (다른 명령을 끼우면 어긋난다)
-        jobs.push({ data: backfeedCommand(state.ejectPending), wait: ALIGN_WAIT });
-        state.ejectPending = 0;
       }
       for (let i = 0; i < copies; i++) {
         jobs.push({ data: bytes });
@@ -1596,7 +1592,11 @@ async function doEject() {
     else await sendUSB(ejectCommand());
     // 한 피치를 밀어 라벨이 완전히 나온다. 다음 인쇄 전에 한 장 + 1mm 를 되감아
     // 그 빈 라벨 위에 다시 찍는다 → 버려지는 라벨이 없다 (실기로 맞춘 값)
-    state.ejectPending += sizeSpec(state.labelSize).ejectBackfeed;
+    state.aligned = false;      // 배출하면 정렬이 깨진다
+    {
+      const sp = sizeSpec(state.labelSize);
+      state.ejectedDots += Math.max(1, sp.lh + Math.round(sp.gapMm * DPMM) - 32);
+    }
     setStatus('✓ 배출 완료');
   } catch (e) { setStatus('오류: ' + e.message); }
   finally { busy(false); }
