@@ -28,15 +28,14 @@ const DPMM = 203 / 25.4;
 const LABEL_SPECS = {
   '30x15': { name: '30 × 15 mm', wMm: 30, hMm: 15, lw: 240, lh: 120,
              gapMm: 3.0, labelX: 126, backfeed: 312,
-             // ejectBackfeed 는 '배출한 뒤'에만 쓰인다 — 평소 인쇄(backfeed)는 영향 없음
-             ejectExtra: 36, ejectBackfeed: 316,
+             ejectExtra: 36,
              pitchAdjust: 1, detail: false, divider: false,
              vertDx: 0, vertDy: 0, logo: false, logoH: 0, margin: 0, qrV: 0, qrH: 0,
              fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
              gapMm: 3.0, labelX: 66,  backfeed: 704,
-             ejectExtra: 36, ejectBackfeed: 708,
+             ejectExtra: 36,
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
              vertDx: 0, vertDy: 4, logo: true, logoH: 40,   // vertDy: 2mm 내렸다가 1.5mm 되당김
@@ -1027,10 +1026,9 @@ const EJECT_BACKFEED_EXTRA = 36;
 const backfeedCommand = (dots) => new TextEncoder().encode(`BACKFEED ${dots}\r\n`);
 const alignJobs = () => {
   const sp = sizeSpec(state.labelSize);
-  // ★ 배출한 뒤에만 다른 값을 쓴다 — 그냥 인쇄할 때(backfeed)는 건드리지 않는다
-  let back = state.ejectedDots
-    ? (sp.ejectBackfeed ?? (sp.backfeed + state.ejectedDots + sp.ejectExtra))
-    : sp.backfeed;
+  // ★ 배출 이송량과 한 쌍으로 실기에서 맞춘 값이다. 함께 테스트하지 않고 바꾸지 말 것.
+  let back = sp.backfeed + state.ejectedDots;
+  if (state.ejectedDots) back += sp.ejectExtra;
   state.ejectedDots = 0;
   return [calibrateCommand(), backfeedCommand(back)];
 };
