@@ -30,6 +30,7 @@ const LABEL_SPECS = {
              gapMm: 3.0, labelX: 126, backfeed: 312, ejectExtra: 36,
              pitchAdjust: 1, detail: false, divider: false,
              vertDx: 0, vertDy: 0, logo: false, logoH: 0, margin: 0, qrV: 0, qrH: 0,
+             ejectFeed: 112,   // 배출 이송량(도트) — 커팅바까지 거리라 라벨 크기와 무관
              fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
@@ -38,6 +39,7 @@ const LABEL_SPECS = {
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
              vertDx: 0, vertDy: 4, logo: true, logoH: 40,   // vertDy: 2mm 내렸다가 1.5mm 되당김
              margin: 16,       // 네 변 여백 2mm — 가로형·세로형 모두
+             ejectFeed: 112,   // 30×15 와 같은 값
              qrV: 80, qrH: 80, // QR 크기 10mm (줄인 만큼 글자를 키웠다)
              // 모든 항목을 켜고도 안 잘리는 최대값 (실측): 가로형 15, 세로형 16.
              // 네 변 여백 2mm 와 '자세히 보기' 자리를 뺀 나머지 기준이다.
@@ -174,6 +176,7 @@ const state = {
   aligned: false,     // 종이가 라벨 시작점에 맞춰져 있는지 (배출하면 깨짐)
   alignedSize: null,  // 어떤 라벨 크기로 맞춘 정렬인지 (크기가 바뀌면 다시 맞춰야 한다)
   overrides: {},      // 미리보기에서 직접 고친 값 (비우면 커피 데이터 값으로 돌아간다)
+  shortcuts: [],      // 단축 버튼에 넣어둔 커피 id
   ejectedDots: 0,     // 배출로 앞으로 밀어낸 양 — 되감을 때 더해야 한다
   preset: null,       // 지금 수정 중인 프리셋 이름 (저장하면 여기에 덮어쓴다)
   labelSize: '30x15', // 라벨 크기
@@ -961,7 +964,8 @@ function rasterCommand(bytesPerRow, height, data) {
 function ejectCommand() {
   const sp    = sizeSpec(state.labelSize);
   const gapPx = Math.round(sp.gapMm * DPMM);
-  const rows  = Math.max(1, sp.lh + gapPx - 32);
+  // 커팅바까지의 거리는 프린터 고정값이다 (라벨 길이에 비례시키면 안 된다)
+  const rows  = Math.max(1, sp.ejectFeed || (sp.lh + gapPx - 32));
   const bytesPerRow = W_FULL / 8;
   return rasterCommand(bytesPerRow, rows, new Uint8Array(bytesPerRow * rows));
 }
@@ -1142,6 +1146,108 @@ async function serverPost(path, body) {
   return info;
 }
 
+// ─────────── 단축 버튼 ───────────
+// 칸에 커피를 끌어다 넣어두면 누르는 즉시 그 커피로 인쇄한다.
+// 저장은 프리셋 테이블에 예약된 이름으로 얹어둔다 — 맥·웹·폰이 같이 본다.
+const SHORTCUT_KEY = '__shortcuts__';
+const SLOT_COUNT = 8;
+
+function paintDragChip() {
+  const el = $('dragChip');
+  if (!el) return;
+  const c = state.current;
+  el.textContent = c ? `☕ ${c.name}` : '커피를 먼저 고르세요';
+  el.classList.toggle('empty', !c);
+  el.draggable = !!c;
+  el.dataset.id = c ? c.id : '';
+}
+
+function paintSlots() {
+  const wrap = $('shortcutSlots');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  for (let i = 0; i < SLOT_COUNT; i++) {
+    const id = state.shortcuts[i] || '';
+    const c  = id ? state.coffees.find((x) => x.id === id) : null;
+    const b  = document.createElement('button');
+    b.type = 'button';
+    b.className = 'slot ' + (c ? 'filled' : 'empty');
+    b.dataset.i = i;
+    if (c) {
+      b.innerHTML = `<span class="no"></span><span class="nm"></span>` +
+                    `<button type="button" class="x" aria-label="비우기">×</button>`;
+      b.querySelector('.no').textContent = i + 1;
+      b.querySelector('.nm').textContent = c.name;
+      b.title = `${c.name} — 누르면 바로 인쇄`;
+      b.querySelector('.x').onclick = (e) => {
+        e.stopPropagation();
+        setShortcut(i, '');
+      };
+      b.onclick = () => runShortcut(i);
+    } else if (id) {
+      // 저장은 돼 있는데 커피 목록에서 사라진 경우
+      b.innerHTML = `<span class="no"></span><span class="nm">없는 커피</span>` +
+                    `<button type="button" class="x" aria-label="비우기">×</button>`;
+      b.querySelector('.no').textContent = i + 1;
+      b.querySelector('.x').onclick = (e) => { e.stopPropagation(); setShortcut(i, ''); };
+      b.onclick = () => setStatus('저장된 커피를 목록에서 찾지 못했어요. × 로 비워주세요.');
+    } else {
+      b.innerHTML = `<span class="no"></span><span class="nm">비어 있음</span>`;
+      b.querySelector('.no').textContent = i + 1;
+      b.title = '커피를 끌어다 놓거나, 눌러서 지금 커피를 넣으세요';
+      // 폰에서는 끌어다 놓기가 어려우니 눌러서도 넣을 수 있게
+      b.onclick = () => {
+        if (!state.current) { setStatus('커피를 먼저 고르세요.'); return; }
+        setShortcut(i, state.current.id);
+      };
+    }
+    // 끌어다 놓기
+    b.addEventListener('dragover', (e) => { e.preventDefault(); b.classList.add('over'); });
+    b.addEventListener('dragleave', () => b.classList.remove('over'));
+    b.addEventListener('drop', (e) => {
+      e.preventDefault();
+      b.classList.remove('over');
+      const id = e.dataTransfer.getData('text/plain');
+      if (id) setShortcut(i, id);
+    });
+    wrap.appendChild(b);
+  }
+}
+
+async function setShortcut(i, id) {
+  state.shortcuts[i] = id;
+  paintSlots();
+  try {
+    await remote.saveOne('presets', SHORTCUT_KEY, JSON.stringify(state.shortcuts));
+    const c = id ? state.coffees.find((x) => x.id === id) : null;
+    setStatus(c ? `✓ ${i + 1}번에 ${c.name} 저장` : `✓ ${i + 1}번 비웠습니다`);
+  } catch (e) {
+    setStatus('단축 버튼 저장 실패: ' + e.message);
+  }
+}
+
+async function loadShortcuts(presets) {
+  const raw = presets ? presets[SHORTCUT_KEY] : (await remote.load('presets'))[SHORTCUT_KEY];
+  let list = [];
+  try { list = JSON.parse(raw || '[]'); } catch {}
+  state.shortcuts = Array.isArray(list) ? list.slice(0, SLOT_COUNT) : [];
+  paintSlots();
+}
+
+/** 단축 버튼 누르면: 그 커피로 바꾸고 설정까지 불러온 뒤 바로 인쇄 */
+async function runShortcut(i) {
+  const id = state.shortcuts[i];
+  const c  = state.coffees.find((x) => x.id === id);
+  if (!c) { setStatus('저장된 커피를 찾지 못했어요.'); return; }
+  $('coffeeSelect').value = id;
+  state.current = c;
+  $('flavor').textContent = c.flavor_notes || '—';
+  paintDragChip();
+  await loadSettings(id);        // 그 커피에 저장해 둔 폰트·크기·문구까지 그대로
+  render();
+  await doPrint();
+}
+
 // ─────────── 인쇄 동작 ───────────
 async function doPrint() {
   if (!$('roasting').value.trim()) { setStatus('로스팅 포인트를 입력해주세요.'); return; }
@@ -1185,7 +1291,7 @@ async function doEject() {
     state.aligned = false;      // 배출하면 정렬이 깨진다
     {
       const sp = sizeSpec(state.labelSize);
-      state.ejectedDots += Math.max(1, sp.lh + Math.round(sp.gapMm * DPMM) - 32);
+      state.ejectedDots += Math.max(1, sp.ejectFeed || (sp.lh + Math.round(sp.gapMm * DPMM) - 32));
     }
     setStatus('✓ 배출 완료');
   } catch (e) { setStatus('오류: ' + e.message); }
@@ -1262,6 +1368,7 @@ function selectCoffee(id) {
   if (!c) return;
   state.current = c;
   $('flavor').textContent = c.flavor_notes || '—';
+  paintDragChip();
   loadSettings(id);
   render();
 }
@@ -1352,6 +1459,7 @@ async function reloadPresets() {
   const keep = sel.value;
   sel.innerHTML = '<option value="">— 프리셋 —</option>';
   for (const name of Object.keys(presets)) {
+    if (name === SHORTCUT_KEY) continue;      // 단축 버튼 저장용 (프리셋 아님)
     const o = document.createElement('option');
     o.value = name; o.textContent = name;
     sel.appendChild(o);
@@ -1687,11 +1795,21 @@ function init() {
 
   initPreviewEditing();   // 미리보기 글자를 눌러 바로 고치기
 
+  // 단축 버튼 — 지금 커피를 끌어다 칸에 넣는다
+  const chip = $('dragChip');
+  chip.addEventListener('dragstart', (e) => {
+    if (!chip.dataset.id) { e.preventDefault(); return; }
+    e.dataTransfer.setData('text/plain', chip.dataset.id);
+    e.dataTransfer.effectAllowed = 'copy';
+  });
+  paintDragChip();
+  paintSlots();
+
   // 매장 인쇄 서버가 서빙 중이면 서버 모드, 아니면 이 컴퓨터의 USB(WebUSB) 모드
   // 모드가 정해진 뒤에 프리셋·커피 목록을 읽어야 매장 맥의 파일을 가져온다
   detectServer().then((isServer) => {
-    reloadPresets().then(markPreset);
-    loadCoffees();
+    reloadPresets().then(() => { markPreset(); loadShortcuts(); });
+    loadCoffees().then(paintSlots);   // 칸에 커피 이름을 띄우려면 목록이 필요하다
     if (isServer) return;
     // 매장 서버가 아니면 맥에 저장된 프리셋·설정을 가져올 수 없다
     const offsite =

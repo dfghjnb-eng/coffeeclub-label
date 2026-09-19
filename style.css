@@ -428,3 +428,57 @@ input:disabled { background:#f2f2f4; color:#aeaeb2; border-color:transparent; }
   font-size: 20px; line-height: 1.5;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+
+/* ── 단축 버튼 ── */
+.dragchip {
+  display: block; width: 100%;
+  padding: 11px 14px; margin-bottom: 10px;
+  border: 1px solid var(--line); border-radius: 14px;
+  background: #f7f7f9; color: var(--ink);
+  font-size: 14px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: grab;
+}
+.dragchip:active { cursor: grabbing; }
+.dragchip.empty { color: var(--ink-sub); font-weight: 500; cursor: default; }
+
+.slots {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.slot {
+  position: relative;
+  aspect-ratio: 1 / 1;          /* 네모난 버튼 */
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 3px; padding: 7px;
+  border: 1px solid var(--line); border-radius: 16px;
+  background: #fff; color: var(--ink);
+  font-family: inherit; text-align: center;
+  cursor: pointer; overflow: hidden;
+}
+.slot.empty {
+  border-style: dashed; border-color: #d7d7da;
+  color: var(--ink-sub);
+}
+.slot.filled { background: #1d1d1f; border-color: #1d1d1f; color: #fff; }
+.slot.over   { background: #e8e8ea; border-color: #1d1d1f; border-style: solid; }
+.slot .no    { font-size: 10px; font-weight: 700; opacity: .55; }
+.slot .nm    {
+  font-size: 11px; font-weight: 600; line-height: 1.25;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden; word-break: keep-all;
+}
+.slot .x {
+  position: absolute; top: 2px; right: 2px;
+  width: 22px; height: 22px; line-height: 20px;
+  border: 0; border-radius: 11px;
+  background: transparent; color: inherit;
+  font-size: 15px; opacity: .6; cursor: pointer;
+}
+.slot .x:hover { opacity: 1; }
+
+@media (max-width: 420px) {
+  .slots { grid-template-columns: repeat(3, 1fr); }
+}
