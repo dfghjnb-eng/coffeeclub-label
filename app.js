@@ -27,19 +27,20 @@ const DPMM = 203 / 25.4;
 // 라벨 크기별 설정 — label_printer.py 의 LABEL_SPECS 와 반드시 같아야 한다
 const LABEL_SPECS = {
   '30x15': { name: '30 × 15 mm', wMm: 30, hMm: 15, lw: 240, lh: 120,
-             gapMm: 3.0, labelX: 126, backfeed: 312, ejectBackfeed: 152,
+             gapMm: 3.0, labelX: 126, backfeed: 312,
+             // 배출 이송과 되감기는 한 쌍 (되감기 = 이송 + 8). 같이 움직이면 인쇄는 그대로다
+             ejectFeed: 148, ejectBackfeed: 156,
              pitchAdjust: 1, detail: false, divider: false,
              vertDx: 0, vertDy: 0, logo: false, logoH: 0, margin: 0, qrV: 0, qrH: 0,
-             ejectFeed: 112,   // 배출 이송량(도트) — 커팅바까지 거리라 라벨 크기와 무관
              fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
-             gapMm: 3.0, labelX: 66,  backfeed: 704, ejectBackfeed: 272,
+             gapMm: 3.0, labelX: 66,  backfeed: 704,
+             ejectFeed: 148, ejectBackfeed: 156,
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
              vertDx: 0, vertDy: 4, logo: true, logoH: 40,   // vertDy: 2mm 내렸다가 1.5mm 되당김
              margin: 16,       // 네 변 여백 2mm — 가로형·세로형 모두
-             ejectFeed: 112,   // 30×15 와 같은 값
              qrV: 80, qrH: 80, // QR 크기 10mm (줄인 만큼 글자를 키웠다)
              // 모든 항목을 켜고도 안 잘리는 최대값 (실측): 가로형 15, 세로형 16.
              // 네 변 여백 2mm 와 '자세히 보기' 자리를 뺀 나머지 기준이다.
@@ -983,9 +984,8 @@ function rasterCommand(bytesPerRow, height, data) {
 function ejectCommand() {
   const sp    = sizeSpec(state.labelSize);
   const gapPx = Math.round(sp.gapMm * DPMM);
-  // 한 피치를 내보낸다 — 프린터가 다음 명령 때 되돌리는 양과 같아 상쇄된다.
-  // ★ 배출과 다음 인쇄 사이에 어떤 명령도 끼워 넣으면 안 된다 (실기 확인).
-  const rows  = Math.max(1, sp.lh + gapPx);
+  // ★ 이 값과 ejectBackfeed 는 한 쌍이다 (되감기 = 이송 + 8).
+  const rows  = Math.max(1, sp.ejectFeed || (sp.lh + gapPx));
   const bytesPerRow = W_FULL / 8;
   return rasterCommand(bytesPerRow, rows, new Uint8Array(bytesPerRow * rows));
 }
