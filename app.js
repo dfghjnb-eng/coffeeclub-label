@@ -27,21 +27,19 @@ const DPMM = 203 / 25.4;
 // 라벨 크기별 설정 — label_printer.py 의 LABEL_SPECS 와 반드시 같아야 한다
 const LABEL_SPECS = {
   '30x15': { name: '30 × 15 mm', wMm: 30, hMm: 15, lw: 240, lh: 120,
-             gapMm: 3.0, labelX: 126, backfeed: 312,
+             gapMm: 3.0, labelX: 126, backfeed: 312, ejectBackfeed: 152,
              pitchAdjust: 1, detail: false, divider: false,
              vertDx: 0, vertDy: 0, logo: false, logoH: 0, margin: 0, qrV: 0, qrH: 0,
              ejectFeed: 112,   // 배출 이송량(도트) — 커팅바까지 거리라 라벨 크기와 무관
-             ejectBackfeed: 148,   // 배출 뒤 추가 되감기 (실기 확정값)
              fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
-             gapMm: 3.0, labelX: 66,  backfeed: 704,
+             gapMm: 3.0, labelX: 66,  backfeed: 704, ejectBackfeed: 272,
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
              vertDx: 0, vertDy: 4, logo: true, logoH: 40,   // vertDy: 2mm 내렸다가 1.5mm 되당김
              margin: 16,       // 네 변 여백 2mm — 가로형·세로형 모두
              ejectFeed: 112,   // 30×15 와 같은 값
-             ejectBackfeed: 268,   // 704+268=972 에서 '여백없이 딱맞음' 확인
              qrV: 80, qrH: 80, // QR 크기 10mm (줄인 만큼 글자를 키웠다)
              // 모든 항목을 켜고도 안 잘리는 최대값 (실측): 가로형 15, 세로형 16.
              // 네 변 여백 2mm 와 '자세히 보기' 자리를 뺀 나머지 기준이다.
@@ -177,6 +175,7 @@ const state = {
   mode: 'usb',        // 'server' = 매장 인쇄 서버 경유 / 'usb' = 이 컴퓨터에 직접 연결
   aligned: false,     // 종이가 라벨 시작점에 맞춰져 있는지 (배출하면 깨짐)
   alignedSize: null,  // 어떤 라벨 크기로 맞춘 정렬인지 (크기가 바뀌면 다시 맞춰야 한다)
+  ejectPending: false, // 배출한 뒤라 다음 인쇄 전에 되감아야 하는지
   overrides: {},      // 미리보기에서 직접 고친 값 (비우면 커피 데이터 값으로 돌아간다)
   shortcuts: [],      // 단축 버튼에 넣어둔 커피 / 블렌드
   blendOnly: false,   // 블렌드(프리셋)만 찍는 중인지
@@ -1566,6 +1565,12 @@ async function doPrint() {
       // 정렬이 안 돼 있을 때만 캘리브 (빈 라벨 1장). 배출은 하지 않는다.
       if (!state.aligned || state.alignedSize !== state.labelSize) {
         for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
+        state.ejectPending = false;
+      } else if (state.ejectPending) {
+        // ★ 배출과 인쇄 사이에는 이 되감기 하나만 보낸다 (다른 명령을 끼우면 어긋난다)
+        jobs.push({ data: backfeedCommand(sizeSpec(state.labelSize).ejectBackfeed),
+                    wait: ALIGN_WAIT });
+        state.ejectPending = false;
       }
       for (let i = 0; i < copies; i++) {
         jobs.push({ data: bytes });
@@ -1588,9 +1593,10 @@ async function doEject() {
   try {
     if (state.mode === 'server') await serverPost('eject', { size: state.labelSize });
     else await sendUSB(ejectCommand());
-    // 한 피치를 밀어냈고 프린터가 다음 명령 때 그만큼 되돌리므로 정렬은 유지된다.
-    // 대신 아직 안 쓴 빈 라벨 한 장이 함께 밀려 나간다.
-    setStatus('✓ 배출 완료 — 빈 라벨 1장이 함께 나옵니다');
+    // 한 피치를 밀어 라벨이 완전히 나온다. 다음 인쇄 전에 한 장 + 1mm 를 되감아
+    // 그 빈 라벨 위에 다시 찍는다 → 버려지는 라벨이 없다 (실기로 맞춘 값)
+    state.ejectPending = true;
+    setStatus('✓ 배출 완료');
   } catch (e) { setStatus('오류: ' + e.message); }
   finally { busy(false); }
 }
