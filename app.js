@@ -1019,7 +1019,6 @@ const calibrateCommand = () => {
  *   · BACKFEED 288이면 3mm 밀리고 312가 정확하다.
  */
 const ALIGN_WAIT = 2500;
-const EJECT_LABELS_BACK = 2;   // 배출 뒤 되감기에서 뺄 라벨 장수
 const BACKFEED_AFTER_ALIGN = 312;
 // 배출한 뒤에는 종이가 더 나가 있어 그만큼(+보정) 더 되감아야 한다.
 // 배출 이송량 112만 더하면 4.5mm 밀려서 36을 더한다. 둘 다 실기로 찾은 값.
@@ -1027,21 +1026,11 @@ const EJECT_BACKFEED_EXTRA = 36;
 const backfeedCommand = (dots) => new TextEncoder().encode(`BACKFEED ${dots}\r\n`);
 const alignJobs = () => {
   const sp = sizeSpec(state.labelSize);
-  // 배출한 뒤라면 밀어냈던 만큼 먼저 되감아 들인다.
-  // 그래야 캘리브가 뱉는 한 장만 나온다. 되감기 총량은 그대로라 인쇄 위치는 안 바뀐다.
-  const pre = state.ejectedDots;
   // ★ 배출 이송량과 한 쌍으로 실기에서 맞춘 값이다. 함께 테스트하지 않고 바꾸지 말 것.
-  let back = sp.backfeed;
-  if (pre) {
-    back += sp.ejectExtra;
-    // 배출 뒤 되감기에서 뺄 라벨 장수. 겹치면 늘리고, 빈 라벨을 건너뛰면 줄인다
-    back -= EJECT_LABELS_BACK * (sp.lh + Math.round(sp.gapMm * DPMM));
-  }
+  let back = sp.backfeed + state.ejectedDots;
+  if (state.ejectedDots) back += sp.ejectExtra;
   state.ejectedDots = 0;
-  const jobs = [];
-  if (pre) jobs.push(backfeedCommand(pre));
-  jobs.push(calibrateCommand(), backfeedCommand(back));
-  return jobs;
+  return [calibrateCommand(), backfeedCommand(back)];
 };
 
 // ─────────── WebUSB ───────────
