@@ -176,7 +176,7 @@ const state = {
   mode: 'usb',        // 'server' = 매장 인쇄 서버 경유 / 'usb' = 이 컴퓨터에 직접 연결
   aligned: false,     // 종이가 라벨 시작점에 맞춰져 있는지 (배출하면 깨짐)
   alignedSize: null,  // 어떤 라벨 크기로 맞춘 정렬인지 (크기가 바뀌면 다시 맞춰야 한다)
-  ejectPending: false, // 배출한 뒤라 다음 인쇄 전에 되감아야 하는지
+  ejectPending: 0,    // 배출한 뒤 다음 인쇄 전에 되감을 양 (여러 번 눌러도 누적)
   overrides: {},      // 미리보기에서 직접 고친 값 (비우면 커피 데이터 값으로 돌아간다)
   shortcuts: [],      // 단축 버튼에 넣어둔 커피 / 블렌드
   blendOnly: false,   // 블렌드(프리셋)만 찍는 중인지
@@ -1565,12 +1565,11 @@ async function doPrint() {
       // 정렬이 안 돼 있을 때만 캘리브 (빈 라벨 1장). 배출은 하지 않는다.
       if (!state.aligned || state.alignedSize !== state.labelSize) {
         for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
-        state.ejectPending = false;
+        state.ejectPending = 0;
       } else if (state.ejectPending) {
         // ★ 배출과 인쇄 사이에는 이 되감기 하나만 보낸다 (다른 명령을 끼우면 어긋난다)
-        jobs.push({ data: backfeedCommand(sizeSpec(state.labelSize).ejectBackfeed),
-                    wait: ALIGN_WAIT });
-        state.ejectPending = false;
+        jobs.push({ data: backfeedCommand(state.ejectPending), wait: ALIGN_WAIT });
+        state.ejectPending = 0;
       }
       for (let i = 0; i < copies; i++) {
         jobs.push({ data: bytes });
@@ -1595,7 +1594,7 @@ async function doEject() {
     else await sendUSB(ejectCommand());
     // 한 피치를 밀어 라벨이 완전히 나온다. 다음 인쇄 전에 한 장 + 1mm 를 되감아
     // 그 빈 라벨 위에 다시 찍는다 → 버려지는 라벨이 없다 (실기로 맞춘 값)
-    state.ejectPending = true;
+    state.ejectPending += sizeSpec(state.labelSize).ejectBackfeed;
     setStatus('✓ 배출 완료');
   } catch (e) { setStatus('오류: ' + e.message); }
   finally { busy(false); }
