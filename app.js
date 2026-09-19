@@ -180,6 +180,7 @@ const state = {
   overrides: {},      // 미리보기에서 직접 고친 값 (비우면 커피 데이터 값으로 돌아간다)
   shortcuts: [],      // 단축 버튼에 넣어둔 커피 / 블렌드
   blendOnly: false,   // 블렌드(프리셋)만 찍는 중인지
+  customTypes: [],    // 직접 만든 형식 버튼
   slotCount: 8,       // 단축 버튼 칸 수 (늘렸다 줄였다)
   ejectedDots: 0,     // 배출로 앞으로 밀어낸 양 — 되감을 때 더해야 한다
   preset: null,       // 지금 수정 중인 프리셋 이름 (저장하면 여기에 덮어쓴다)
@@ -984,8 +985,8 @@ function rasterCommand(bytesPerRow, height, data) {
 function ejectCommand() {
   const sp    = sizeSpec(state.labelSize);
   const gapPx = Math.round(sp.gapMm * DPMM);
-  // 커팅바까지의 거리는 프린터 고정값이다 (라벨 길이에 비례시키면 안 된다)
-  const rows  = Math.max(1, sp.ejectFeed || (sp.lh + gapPx - 32));
+  // ★ 이 값과 alignJobs 의 되감기는 한 쌍이다. 한쪽만 바꾸면 인쇄가 어긋난다.
+  const rows  = Math.max(1, sp.lh + gapPx - 32);
   const bytesPerRow = W_FULL / 8;
   return rasterCommand(bytesPerRow, rows, new Uint8Array(bytesPerRow * rows));
 }
@@ -1027,10 +1028,9 @@ const EJECT_BACKFEED_EXTRA = 36;
 const backfeedCommand = (dots) => new TextEncoder().encode(`BACKFEED ${dots}\r\n`);
 const alignJobs = () => {
   const sp = sizeSpec(state.labelSize);
-  // 갭센서 캘리브는 종이가 어디 있든 갭을 다시 찾으므로,
-  // 배출 뒤 되감기는 배출 거리와 무관한 고정값이다.
-  let back = sp.backfeed;
-  if (state.ejectedDots) back += (sp.ejectBackfeed || (state.ejectedDots + sp.ejectExtra));
+  // ★ 배출 이송량과 한 쌍으로 실기에서 맞춘 값이다. 함께 테스트하지 않고 바꾸지 말 것.
+  let back = sp.backfeed + state.ejectedDots;
+  if (state.ejectedDots) back += sp.ejectExtra;
   state.ejectedDots = 0;
   return [calibrateCommand(), backfeedCommand(back)];
 };
@@ -1173,28 +1173,72 @@ async function serverPost(path, body) {
 function paintTypeSeg() {
   const seg = $('typeSeg');
   if (!seg) return;
-  if (!seg.children.length) {
-    const mk = (ko, label) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.dataset.v = ko;
-      b.textContent = label;
-      b.onclick = () => setDrinkType(ko);
-      seg.appendChild(b);
-    };
-    mk('', '없음');
-    for (const [ko] of DRINK_TYPES) mk(ko, ko);
+  seg.innerHTML = '';
+
+  const mk = (label, onPick, custom) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    if (custom) {
+      b.className = 'custom';
+      const x = document.createElement('button');
+      x.type = 'button'; x.className = 'del'; x.textContent = '×';
+      x.setAttribute('aria-label', '이 버튼 지우기');
+      x.onclick = (e) => { e.stopPropagation(); removeCustomType(label); };
+      b.appendChild(x);
+    }
+    b.onclick = onPick;
+    seg.appendChild(b);
+    return b;
+  };
+
+  const title = ($('typeTitle') ? $('typeTitle').value : '').trim();
+  mk('없음', () => setDrinkType('')).classList.toggle('on', !state.drinkType && !title);
+  for (const [ko] of DRINK_TYPES) {
+    mk(ko, () => setDrinkType(ko)).classList.toggle('on', state.drinkType === ko);
   }
-  seg.querySelectorAll('button').forEach((b) =>
-    b.classList.toggle('on', b.dataset.v === (state.drinkType || '')));
-  const t = $('typeTitle');
-  // 제목을 직접 적어두면 그게 형식 자리를 차지한다 → 버튼은 흐리게
-  if (t) seg.classList.toggle('dim', !!t.value.trim());
+  for (const t of state.customTypes) {
+    mk(t, () => setTypeTitle(t), true).classList.toggle('on', title === t);
+  }
+}
+
+async function saveCustomTypes() {
+  await remote.saveOne('presets', TYPES_KEY, JSON.stringify(state.customTypes));
+}
+
+async function loadCustomTypes(presets) {
+  const raw = presets ? presets[TYPES_KEY] : (await remote.load('presets'))[TYPES_KEY];
+  let list = [];
+  try { list = JSON.parse(raw || '[]'); } catch {}
+  state.customTypes = Array.isArray(list) ? list.filter((x) => typeof x === 'string') : [];
+  paintTypeSeg();
+}
+
+async function addCustomType(text) {
+  const t = (text || '').trim();
+  if (!t) { setStatus('제목을 먼저 적어주세요.'); return; }
+  if (state.customTypes.includes(t) || DRINK_TYPES.some(([ko]) => ko === t)) {
+    setStatus('이미 있는 형식입니다.'); return;
+  }
+  state.customTypes.push(t);
+  setTypeTitle(t);           // 만들자마자 고른 상태로
+  try { await saveCustomTypes(); setStatus(`✓ 형식 '${t}' 추가`); }
+  catch (e) { setStatus('형식 저장 실패: ' + e.message); }
+}
+
+async function removeCustomType(text) {
+  state.customTypes = state.customTypes.filter((x) => x !== text);
+  if (($('typeTitle').value || '').trim() === text) setTypeTitle('');
+  else paintTypeSeg();
+  try { await saveCustomTypes(); setStatus(`✓ 형식 '${text}' 삭제`); }
+  catch (e) { setStatus('형식 저장 실패: ' + e.message); }
 }
 
 /** 제목 직접 입력 — 비우면 고른 형식이 다시 찍힌다 */
 function setTypeTitle(v) {
   const t = (v || '').trim();
+  if ($('typeTitle') && $('typeTitle').value !== v) $('typeTitle').value = v || '';
+  if (t) state.drinkType = '';        // 형식과 제목은 같은 자리라 하나만
   if (t) { state.overrides.type = t; state.checked.add('type'); state.order = ['type', ...state.order.filter((k) => k !== 'type')]; }
   else   { delete state.overrides.type; if (!state.drinkType) state.checked.delete('type'); }
   buildOrderList();
@@ -1325,6 +1369,7 @@ function initChipDrag(chipId, kind) {
 // 칸에 커피를 끌어다 넣어두면 누르는 즉시 그 커피로 인쇄한다.
 // 저장은 프리셋 테이블에 예약된 이름으로 얹어둔다 — 맥·웹·폰이 같이 본다.
 const SHORTCUT_KEY = '__shortcuts__';
+const TYPES_KEY = '__types__';   // 직접 만든 형식 버튼
 const SLOT_MIN = 4, SLOT_MAX = 40, SLOT_STEP = 4;
 
 function paintDragChip() {
@@ -1549,7 +1594,7 @@ async function doEject() {
     state.aligned = false;      // 배출하면 정렬이 깨진다
     {
       const sp = sizeSpec(state.labelSize);
-      state.ejectedDots += Math.max(1, sp.ejectFeed || (sp.lh + Math.round(sp.gapMm * DPMM) - 32));
+      state.ejectedDots += Math.max(1, sp.lh + Math.round(sp.gapMm * DPMM) - 32);
     }
     setStatus('✓ 배출 완료');
   } catch (e) { setStatus('오류: ' + e.message); }
@@ -1723,7 +1768,7 @@ async function reloadPresets() {
   const keep = sel.value;
   sel.innerHTML = '<option value="">— 프리셋 —</option>';
   for (const name of Object.keys(presets)) {
-    if (name === SHORTCUT_KEY) continue;      // 단축 버튼 저장용 (프리셋 아님)
+    if (name.startsWith('__') && name.endsWith('__')) continue;   // 내부 저장용
     const o = document.createElement('option');
     o.value = name; o.textContent = name;
     sel.appendChild(o);
@@ -1987,6 +2032,7 @@ function init() {
   });
   $('quickVertical').onchange = (e) => setVertical(e.target.checked);
   $('typeTitle').oninput = (e) => setTypeTitle(e.target.value);
+  $('typeAdd').onclick = () => addCustomType($('typeTitle').value);
 
   // 형식 버튼 · 날짜 스위치 · 칸 늘리기
   paintTypeSeg();
@@ -2067,7 +2113,7 @@ function init() {
   // 매장 인쇄 서버가 서빙 중이면 서버 모드, 아니면 이 컴퓨터의 USB(WebUSB) 모드
   // 모드가 정해진 뒤에 프리셋·커피 목록을 읽어야 매장 맥의 파일을 가져온다
   detectServer().then((isServer) => {
-    reloadPresets().then(() => { markPreset(); loadShortcuts(); });
+    reloadPresets().then(() => { markPreset(); loadShortcuts(); loadCustomTypes(); });
     loadCoffees().then(paintSlots);   // 칸에 커피 이름을 띄우려면 목록이 필요하다
     if (isServer) return;
     // 매장 서버가 아니면 맥에 저장된 프리셋·설정을 가져올 수 없다

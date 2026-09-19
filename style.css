@@ -556,3 +556,14 @@ input:disabled { background:#f2f2f4; color:#aeaeb2; border-color:transparent; }
 /* 제목을 직접 적으면 형식 버튼은 흐리게 */
 .seg.wrap.dim button { opacity: .45; }
 .seg.wrap.dim button.on { opacity: .6; }
+
+/* 직접 만든 형식 버튼 — 지우기 × 가 붙는다 */
+.seg.wrap button.custom { position: relative; padding-right: 30px; }
+.seg.wrap button.custom .del {
+  position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+  width: 22px; height: 22px; line-height: 20px;
+  border: 0; border-radius: 11px; padding: 0;
+  background: transparent; color: inherit;
+  font-size: 15px; opacity: .5; cursor: pointer;
+}
+.seg.wrap button.custom .del:hover { opacity: 1; }
