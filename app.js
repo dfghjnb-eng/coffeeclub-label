@@ -29,14 +29,16 @@ const LABEL_SPECS = {
   '30x15': { name: '30 × 15 mm', wMm: 30, hMm: 15, lw: 240, lh: 120,
              gapMm: 3.0, labelX: 126, backfeed: 312,
              // 배출 이송과 되감기는 한 쌍 (되감기 = 이송 + 8). 같이 움직이면 인쇄는 그대로다
-             ejectFeed: 108, ejectBackfeed: 116,
+             // 인쇄→배출을 반복하면 5mm 씩 밀려서 되감기를 40도트 더 준다
+             ejectFeed: 68, ejectBackfeed: 116,
              pitchAdjust: 1, detail: false, divider: false,
              vertDx: 0, vertDy: 0, logo: false, logoH: 0, margin: 0, qrV: 0, qrH: 0,
              fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
              gapMm: 3.0, labelX: 66,  backfeed: 704,
-             ejectFeed: 108, ejectBackfeed: 116,
+             // 인쇄→배출을 반복하면 5mm 씩 밀려서 되감기를 40도트 더 준다
+             ejectFeed: 68, ejectBackfeed: 116,
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
              vertDx: 0, vertDy: 4, logo: true, logoH: 40,   // vertDy: 2mm 내렸다가 1.5mm 되당김
