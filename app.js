@@ -27,7 +27,7 @@ const DPMM = 203 / 25.4;
 // 라벨 크기별 설정 — label_printer.py 의 LABEL_SPECS 와 반드시 같아야 한다
 const LABEL_SPECS = {
   '30x15': { name: '30 × 15 mm', wMm: 30, hMm: 15, lw: 240, lh: 120,
-             gapMm: 3.0, labelX: 126, backfeed: 312, ejectExtra: 36,
+             gapMm: 3.0, labelX: 126, backfeed: 312,
              pitchAdjust: 1, detail: false, divider: false,
              vertDx: 0, vertDy: 0, logo: false, logoH: 0, margin: 0, qrV: 0, qrH: 0,
              ejectFeed: 112,   // 배출 이송량(도트) — 커팅바까지 거리라 라벨 크기와 무관
@@ -35,7 +35,7 @@ const LABEL_SPECS = {
              fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
-             gapMm: 3.0, labelX: 66,  backfeed: 704, ejectExtra: 36,
+             gapMm: 3.0, labelX: 66,  backfeed: 704,
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
              vertDx: 0, vertDy: 4, logo: true, logoH: 40,   // vertDy: 2mm 내렸다가 1.5mm 되당김
@@ -182,7 +182,6 @@ const state = {
   blendOnly: false,   // 블렌드(프리셋)만 찍는 중인지
   customTypes: [],    // 직접 만든 형식 버튼
   slotCount: 8,       // 단축 버튼 칸 수 (늘렸다 줄였다)
-  ejectedDots: 0,     // 배출로 앞으로 밀어낸 양 — 되감을 때 더해야 한다
   preset: null,       // 지금 수정 중인 프리셋 이름 (저장하면 여기에 덮어쓴다)
   labelSize: '30x15', // 라벨 크기
   vertical: false,    // 세로형(글자 90도)
@@ -985,8 +984,9 @@ function rasterCommand(bytesPerRow, height, data) {
 function ejectCommand() {
   const sp    = sizeSpec(state.labelSize);
   const gapPx = Math.round(sp.gapMm * DPMM);
-  // ★ 이 값과 alignJobs 의 되감기는 한 쌍이다. 한쪽만 바꾸면 인쇄가 어긋난다.
-  const rows  = Math.max(1, sp.lh + gapPx - 32);
+  // 한 피치를 내보낸다 — 프린터가 다음 명령 때 되돌리는 양과 같아 상쇄된다.
+  // ★ 배출과 다음 인쇄 사이에 어떤 명령도 끼워 넣으면 안 된다 (실기 확인).
+  const rows  = Math.max(1, sp.lh + gapPx);
   const bytesPerRow = W_FULL / 8;
   return rasterCommand(bytesPerRow, rows, new Uint8Array(bytesPerRow * rows));
 }
@@ -1028,10 +1028,7 @@ const EJECT_BACKFEED_EXTRA = 36;
 const backfeedCommand = (dots) => new TextEncoder().encode(`BACKFEED ${dots}\r\n`);
 const alignJobs = () => {
   const sp = sizeSpec(state.labelSize);
-  // ★ 배출 이송량과 한 쌍으로 실기에서 맞춘 값이다. 함께 테스트하지 않고 바꾸지 말 것.
-  let back = sp.backfeed + state.ejectedDots;
-  if (state.ejectedDots) back += sp.ejectExtra;
-  state.ejectedDots = 0;
+  let back = sp.backfeed;   // 배출은 정렬을 깨지 않으므로 보정이 없다
   return [calibrateCommand(), backfeedCommand(back)];
 };
 
@@ -1591,12 +1588,9 @@ async function doEject() {
   try {
     if (state.mode === 'server') await serverPost('eject', { size: state.labelSize });
     else await sendUSB(ejectCommand());
-    state.aligned = false;      // 배출하면 정렬이 깨진다
-    {
-      const sp = sizeSpec(state.labelSize);
-      state.ejectedDots += Math.max(1, sp.lh + Math.round(sp.gapMm * DPMM) - 32);
-    }
-    setStatus('✓ 배출 완료');
+    // 한 피치를 밀어냈고 프린터가 다음 명령 때 그만큼 되돌리므로 정렬은 유지된다.
+    // 대신 아직 안 쓴 빈 라벨 한 장이 함께 밀려 나간다.
+    setStatus('✓ 배출 완료 — 빈 라벨 1장이 함께 나옵니다');
   } catch (e) { setStatus('오류: ' + e.message); }
   finally { busy(false); }
 }
