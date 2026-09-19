@@ -31,6 +31,7 @@ const LABEL_SPECS = {
              pitchAdjust: 1, detail: false, divider: false,
              vertDx: 0, vertDy: 0, logo: false, logoH: 0, margin: 0, qrV: 0, qrH: 0,
              ejectFeed: 112,   // 배출 이송량(도트) — 커팅바까지 거리라 라벨 크기와 무관
+             ejectBackfeed: 148,   // 배출 뒤 추가 되감기 (실기 확정값)
              fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
@@ -40,6 +41,7 @@ const LABEL_SPECS = {
              vertDx: 0, vertDy: 4, logo: true, logoH: 40,   // vertDy: 2mm 내렸다가 1.5mm 되당김
              margin: 16,       // 네 변 여백 2mm — 가로형·세로형 모두
              ejectFeed: 112,   // 30×15 와 같은 값
+             ejectBackfeed: 268,   // 704+268=972 에서 '여백없이 딱맞음' 확인
              qrV: 80, qrH: 80, // QR 크기 10mm (줄인 만큼 글자를 키웠다)
              // 모든 항목을 켜고도 안 잘리는 최대값 (실측): 가로형 15, 세로형 16.
              // 네 변 여백 2mm 와 '자세히 보기' 자리를 뺀 나머지 기준이다.
@@ -470,6 +472,8 @@ function renderLabel(ctx, o) {
   // '자세히 보기' 줄에 실제로 필요한 높이.
   // 예전엔 14도트로 고정돼 있어서 글자를 키우면 아래가 잘렸다.
   const detailsH = o.showDetails ? Math.round(o.fsTiny) + 6 : 4;
+  // 하프카페인 줄도 미리 자리를 빼둬야 세로형처럼 꽉 찬 배치에서도 들어간다
+  const halfH = o.showHalf ? Math.round(o.fsSub) + 4 : 0;
 
   // ── QR 위 로고 (50×30 에서만) ──
   const showLogo = !!(o.showQR && sp.logo && logoImg);
@@ -479,7 +483,7 @@ function renderLabel(ctx, o) {
 
   // 가로로 넓으면 QR을 오른쪽에, 세로로 길면 아래 가운데에
   const qrBottom = CH > CW;
-  let QR_SIZE, qrX, qrY, textMaxW, MAX_Y;
+  let QR_SIZE, qrX, qrY, textMaxW, MAX_Y, TEXT_BOTTOM;
   if (qrBottom) {
     QR_SIZE  = Math.min(Math.floor(CW * 0.62), Math.floor(CH / 3));
     if (sp.qrV) QR_SIZE = Math.min(QR_SIZE, sp.qrV);   // 크기를 직접 정해두면 그 값
@@ -487,6 +491,8 @@ function renderLabel(ctx, o) {
     qrY      = CH - QR_SIZE - detailsH;
     textMaxW = CW - 8;
     MAX_Y    = o.showQR ? qrY - logoBox - 6 : CH - 2;
+    TEXT_BOTTOM = MAX_Y;
+    MAX_Y -= halfH;
   } else {
     QR_SIZE  = Math.min(CH <= 130 ? 82 : Math.floor(CH * 0.42), CH - 2 * M - detailsH - logoBox);
     if (sp.qrH) QR_SIZE = Math.min(QR_SIZE, sp.qrH);
@@ -494,6 +500,8 @@ function renderLabel(ctx, o) {
     qrY      = M + logoBox;
     textMaxW = o.showQR ? qrX - 8 : CW - 8;
     MAX_Y    = CH - 2;
+    TEXT_BOTTOM = MAX_Y;
+    MAX_Y -= halfH;
   }
 
   // ── QR 코드 ──
@@ -628,6 +636,14 @@ function renderLabel(ctx, o) {
   };
 
   for (const key of o.order) parts[key] && parts[key]();
+
+  // ── 하프카페인: 순서와 상관없이 글자 영역 제일 아래에 ──
+  if (o.showHalf) {
+    setFont(o.fsSub);
+    const hy = Math.max(y, TEXT_BOTTOM - Math.round(o.fsSub));
+    drawText(ctx, tx, hy, o.halfText || '하프카페인', ls);
+    hit('half', tx, hy, textMaxW, Math.round(o.fsSub));
+  }
   ctx.restore();
 
   if (o.collectHits) {
@@ -678,6 +694,7 @@ function buildOrder() {
     showCustom:   state.checked.has('custom'),
     showQR:       $('visQR').checked,
     showDetails:  $('visDetails').checked,
+    showHalf:     $('quickHalf').checked,
   };
 }
 
@@ -1008,8 +1025,10 @@ const EJECT_BACKFEED_EXTRA = 36;
 const backfeedCommand = (dots) => new TextEncoder().encode(`BACKFEED ${dots}\r\n`);
 const alignJobs = () => {
   const sp = sizeSpec(state.labelSize);
-  let back = sp.backfeed + state.ejectedDots;
-  if (state.ejectedDots) back += sp.ejectExtra;
+  // 갭센서 캘리브는 종이가 어디 있든 갭을 다시 찾으므로,
+  // 배출 뒤 되감기는 배출 거리와 무관한 고정값이다.
+  let back = sp.backfeed;
+  if (state.ejectedDots) back += (sp.ejectBackfeed || (state.ejectedDots + sp.ejectExtra));
   state.ejectedDots = 0;
   return [calibrateCommand(), backfeedCommand(back)];
 };
@@ -1206,8 +1225,8 @@ function setQuickDate(on) {
  *  · setPointerCapture 는 중간에 풀려 pointerup 을 놓치는 일이 있다.
  *  그래서 누른 뒤에는 window 에서 직접 받는다 — 마우스·손가락·펜 모두 같은 코드.
  */
-function initChipDrag() {
-  const chip = $('dragChip');
+function initChipDrag(chipId, kind) {
+  const chip = $(chipId);
   if (!chip) return;
   let ghost = null, dragging = false, sx = 0, sy = 0, hot = null;
 
@@ -1255,7 +1274,7 @@ function initChipDrag() {
     const id = chip.dataset.id;
     cleanUp();
     if (!wasDragging) return;
-    if (s) setShortcut(+s.dataset.i, id);
+    if (s) setSlot(+s.dataset.i, kind === 'preset' ? { p: id } : { c: id });
     else setStatus('칸 위에 놓아야 저장됩니다.');
   }
 
@@ -1287,54 +1306,63 @@ function paintDragChip() {
   el.dataset.id = c ? c.id : '';
 }
 
+/** 칸 하나를 항상 { c: 커피id, p: 프리셋이름 } 꼴로 읽는다 (옛 저장본은 문자열) */
+const slotOf = (i) => {
+  const v = state.shortcuts[i];
+  if (!v) return { c: '', p: '' };
+  return typeof v === 'string' ? { c: v, p: '' } : { c: v.c || '', p: v.p || '' };
+};
+
+/** 지금 고른 프리셋을 끌 수 있는 칩으로 */
+function paintPresetChip() {
+  const el = $('presetChip');
+  if (!el) return;
+  const name = $('presetSelect') ? $('presetSelect').value : '';
+  el.textContent = name ? `⠿  📝 ${name}` : '프리셋을 먼저 고르세요';
+  el.classList.toggle('empty', !name);
+  el.draggable = false;
+  el.dataset.id = name || '';
+}
+
 function paintSlots() {
   const wrap = $('shortcutSlots');
   if (!wrap) return;
   wrap.innerHTML = '';
   for (let i = 0; i < state.slotCount; i++) {
-    const id = state.shortcuts[i] || '';
-    const c  = id ? state.coffees.find((x) => x.id === id) : null;
-    const b  = document.createElement('button');
+    const { c: id, p: preset } = slotOf(i);
+    const c = id ? state.coffees.find((x) => x.id === id) : null;
+    const missing = !!id && !c;
+    const filled = !!(id || preset);
+
+    const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'slot ' + (c ? 'filled' : 'empty');
+    b.className = 'slot ' + (c ? 'filled' : (preset ? 'onlypreset' : 'empty'));
     b.dataset.i = i;
-    if (c) {
-      b.innerHTML = `<span class="no"></span><span class="nm"></span>` +
-                    `<button type="button" class="x" aria-label="비우기">×</button>`;
-      b.querySelector('.no').textContent = i + 1;
-      b.querySelector('.nm').textContent = c.name;
-      b.title = `${c.name} — 누르면 바로 인쇄`;
-      b.querySelector('.x').onclick = (e) => {
-        e.stopPropagation();
-        setShortcut(i, '');
-      };
-      b.onclick = () => runShortcut(i);
-    } else if (id) {
-      // 저장은 돼 있는데 커피 목록에서 사라진 경우
-      b.innerHTML = `<span class="no"></span><span class="nm">없는 커피</span>` +
-                    `<button type="button" class="x" aria-label="비우기">×</button>`;
-      b.querySelector('.no').textContent = i + 1;
-      b.querySelector('.x').onclick = (e) => { e.stopPropagation(); setShortcut(i, ''); };
+
+    const name = c ? c.name : (missing ? '없는 커피' : (preset ? '커피 없음' : '비어 있음'));
+    b.innerHTML = `<span class="no"></span><span class="nm"></span>` +
+                  (preset ? `<span class="pz"></span>` : '') +
+                  (filled ? `<button type="button" class="x" aria-label="비우기">×</button>` : '');
+    b.querySelector('.no').textContent = i + 1;
+    b.querySelector('.nm').textContent = name;
+    if (preset) b.querySelector('.pz').textContent = `📝 ${preset}`;
+    if (filled) {
+      b.querySelector('.x').onclick = (e) => { e.stopPropagation(); setSlot(i, { c: '', p: '' }); };
+    }
+
+    if (missing) {
       b.onclick = () => setStatus('저장된 커피를 목록에서 찾지 못했어요. × 로 비워주세요.');
+    } else if (filled) {
+      b.title = `${name}${preset ? ' · ' + preset : ''} — 누르면 바로 인쇄`;
+      b.onclick = () => runShortcut(i);
     } else {
-      b.innerHTML = `<span class="no"></span><span class="nm">비어 있음</span>`;
-      b.querySelector('.no').textContent = i + 1;
-      b.title = '커피를 끌어다 놓거나, 눌러서 지금 커피를 넣으세요';
+      b.title = '커피나 프리셋을 끌어다 놓거나, 눌러서 지금 커피를 넣으세요';
       // 폰에서는 끌어다 놓기가 어려우니 눌러서도 넣을 수 있게
       b.onclick = () => {
         if (!state.current) { setStatus('커피를 먼저 고르세요.'); return; }
-        setShortcut(i, state.current.id);
+        setSlot(i, { c: state.current.id });
       };
     }
-    // 끌어다 놓기
-    b.addEventListener('dragover', (e) => { e.preventDefault(); b.classList.add('over'); });
-    b.addEventListener('dragleave', () => b.classList.remove('over'));
-    b.addEventListener('drop', (e) => {
-      e.preventDefault();
-      b.classList.remove('over');
-      const id = e.dataTransfer.getData('text/plain');
-      if (id) setShortcut(i, id);
-    });
     wrap.appendChild(b);
   }
   paintSlotBar();
@@ -1345,13 +1373,18 @@ async function saveShortcuts() {
     JSON.stringify({ n: state.slotCount, ids: state.shortcuts }));
 }
 
-async function setShortcut(i, id) {
-  state.shortcuts[i] = id;
+/** patch 에 준 것만 바꾼다 — 커피만, 프리셋만 따로 넣을 수 있게 */
+async function setSlot(i, patch) {
+  const cur = slotOf(i);
+  const next = { c: patch.c === undefined ? cur.c : patch.c,
+                 p: patch.p === undefined ? cur.p : patch.p };
+  state.shortcuts[i] = (next.c || next.p) ? next : '';
   paintSlots();
   try {
     await saveShortcuts();
-    const c = id ? state.coffees.find((x) => x.id === id) : null;
-    setStatus(c ? `✓ ${i + 1}번에 ${c.name} 저장` : `✓ ${i + 1}번 비웠습니다`);
+    const c = next.c ? state.coffees.find((x) => x.id === next.c) : null;
+    const what = [c && c.name, next.p && `📝 ${next.p}`].filter(Boolean).join(' · ');
+    setStatus(what ? `✓ ${i + 1}번에 ${what} 저장` : `✓ ${i + 1}번 비웠습니다`);
   } catch (e) {
     setStatus('단축 버튼 저장 실패: ' + e.message);
   }
@@ -1393,18 +1426,34 @@ function paintSlotBar() {
 
 /** 단축 버튼 누르면: 그 커피로 바꾸고 설정까지 불러온 뒤 바로 인쇄 */
 async function runShortcut(i) {
-  const id = state.shortcuts[i];
-  const c  = state.coffees.find((x) => x.id === id);
-  if (!c) { setStatus('저장된 커피를 찾지 못했어요.'); return; }
-  $('coffeeSelect').value = id;
-  state.current = c;
-  $('flavor').textContent = c.flavor_notes || '—';
-  paintDragChip();
-  const type = state.drinkType, dateOn = $('dateCheck').checked;
-  await loadSettings(id);        // 그 커피에 저장해 둔 폰트·크기·문구까지 그대로
+  const { c: id, p: preset } = slotOf(i);
+  const c = id ? state.coffees.find((x) => x.id === id) : null;
+  if (id && !c) { setStatus('저장된 커피를 찾지 못했어요.'); return; }
+  const type = state.drinkType, dateOn = $('dateCheck').checked, halfOn = $('quickHalf').checked;
+  if (c) {
+    $('coffeeSelect').value = id;
+    state.current = c;
+    $('flavor').textContent = c.flavor_notes || '—';
+    paintDragChip();
+    await loadSettings(id);      // 그 커피에 저장해 둔 폰트·크기·문구까지 그대로
+  }
+  if (preset) {                  // 칸에 프리셋이 있으면 추가 텍스트를 그것으로 덮는다
+    const presets = await remote.load('presets');
+    if (presets[preset] === undefined) {
+      setStatus(`프리셋 '${preset}' 을 찾지 못했어요.`);
+    } else {
+      $('customText').value = presets[preset];
+      state.preset = preset;
+      $('presetSelect').value = preset;
+      markPreset();
+      state.checked.add('custom');
+      buildOrderList();
+    }
+  }
   // 형식·날짜는 방금 버튼으로 고른 것이 이긴다 (저장된 값이 덮어쓰지 않게)
   setDrinkType(type);
   setQuickDate(dateOn);
+  $('quickHalf').checked = halfOn;
   render();
   await doPrint();
 }
@@ -1574,6 +1623,7 @@ async function loadSettings(id) {
 
   $('visQR').checked      = s.show_qr      ?? true;
   $('visDetails').checked = s.show_details ?? true;
+  $('quickHalf').checked  = s.half ?? false;
   $('dateCheck').checked  = s.date_check   ?? false;
   $('dateInput').value    = s.date || todayStr();
   syncDateInput();
@@ -1601,6 +1651,7 @@ async function saveSettings() {
     element_order: state.order.slice(),
     element_checked: [...state.checked],
     show_qr: $('visQR').checked, show_details: $('visDetails').checked,
+    half: $('quickHalf').checked,
     overrides: { ...state.overrides },   // 미리보기에서 직접 고친 값
   };
   await remote.saveOne('settings', id, entry);
@@ -1632,6 +1683,7 @@ async function reloadPresets() {
 
 /** 지금 어떤 프리셋을 수정 중인지 버튼에 표시 */
 function markPreset() {
+  paintPresetChip();
   const sel = $('presetSelect');
   if (sel.value !== (state.preset || '')) sel.value = state.preset || '';
   const btn = $('presetSave');
@@ -1893,6 +1945,7 @@ function init() {
   paintTypeSeg();
   paintDateSwitch();
   $('quickDate').onchange = (e) => setQuickDate(e.target.checked);
+  $('quickHalf').onchange = render;
   $('slotPlus').onclick  = () => changeSlotCount(+SLOT_STEP);
   $('slotMinus').onclick = () => changeSlotCount(-SLOT_STEP);
 
@@ -1956,8 +2009,10 @@ function init() {
   initPreviewEditing();   // 미리보기 글자를 눌러 바로 고치기
 
   // 단축 버튼 — 지금 커피를 끌어다 칸에 넣는다
-  initChipDrag();
+  initChipDrag('dragChip', 'coffee');
+  initChipDrag('presetChip', 'preset');
   paintDragChip();
+  paintPresetChip();
   paintSlots();
 
   // 매장 인쇄 서버가 서빙 중이면 서버 모드, 아니면 이 컴퓨터의 USB(WebUSB) 모드
