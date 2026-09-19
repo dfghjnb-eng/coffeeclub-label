@@ -176,6 +176,7 @@ const state = {
   aligned: false,     // 종이가 라벨 시작점에 맞춰져 있는지 (배출하면 깨짐)
   alignedSize: null,  // 어떤 라벨 크기로 맞춘 정렬인지 (크기가 바뀌면 다시 맞춰야 한다)
   ejectedDots: 0,     // 배출로 앞으로 밀어낸 양 — 되감을 때 더해야 한다
+  tearOut: 0,         // 절취선을 커팅바로 내보내 둔 양 (다음 인쇄 전에 되감는다)
   overrides: {},      // 미리보기에서 직접 고친 값 (비우면 커피 데이터 값으로 돌아간다)
   shortcuts: [],      // 단축 버튼에 넣어둔 커피 / 블렌드
   blendOnly: false,   // 블렌드(프리셋)만 찍는 중인지
@@ -1024,6 +1025,12 @@ const BACKFEED_AFTER_ALIGN = 312;
 // 배출 이송량 112만 더하면 4.5mm 밀려서 36을 더한다. 둘 다 실기로 찾은 값.
 const EJECT_BACKFEED_EXTRA = 36;
 const backfeedCommand = (dots) => new TextEncoder().encode(`BACKFEED ${dots}\r\n`);
+const feedCommand     = (dots) => new TextEncoder().encode(`FEED ${dots}\r\n`);
+
+// ── 티어오프 — 인쇄가 끝나면 절취선을 커팅바로 보낸다 ──
+// ESC/POS 래스터에는 티어오프 동작이 없어서 FEED / BACKFEED 로 직접 흉내낸다.
+// 112도트(14mm)는 실기로 맞춘 헤드↔커팅바 거리.
+const TEAR_FEED = 108;
 const alignJobs = () => {
   const sp = sizeSpec(state.labelSize);
   // ★ 배출 이송량과 한 쌍으로 실기에서 맞춘 값이다. 함께 테스트하지 않고 바꾸지 말 것.
@@ -1565,6 +1572,10 @@ async function doPrint() {
       const bytes = labelToRaster(buildOrder());
       const jobs = [];
       // 정렬이 안 돼 있을 때만 캘리브 (빈 라벨 1장). 배출은 하지 않는다.
+      if (state.tearOut) {          // 커팅 위치로 나가 있으면 먼저 제자리로
+        jobs.push({ data: backfeedCommand(state.tearOut), wait: ALIGN_WAIT });
+        state.tearOut = 0;
+      }
       if (!state.aligned || state.alignedSize !== state.labelSize) {
         for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
       }
@@ -1574,7 +1585,9 @@ async function doPrint() {
           jobs.push({ data: pitchFeedCommand(), wait: 300 });
         }
       }
+      jobs.push({ data: feedCommand(TEAR_FEED) });   // 절취선을 커팅바로
       await sendUSBJobs(jobs);
+      state.tearOut = TEAR_FEED;
       state.aligned = true;
       state.alignedSize = state.labelSize;
     }
@@ -1588,15 +1601,11 @@ async function doEject() {
   busy(true, '배출 중…');
   try {
     if (state.mode === 'server') await serverPost('eject', { size: state.labelSize });
-    else await sendUSB(ejectCommand());
+    else if (!state.tearOut) { await sendUSB(feedCommand(TEAR_FEED)); state.tearOut = TEAR_FEED; }
     // 한 피치를 밀어 라벨이 완전히 나온다. 다음 인쇄 전에 한 장 + 1mm 를 되감아
     // 그 빈 라벨 위에 다시 찍는다 → 버려지는 라벨이 없다 (실기로 맞춘 값)
-    state.aligned = false;      // 배출하면 정렬이 깨진다
-    {
-      const sp = sizeSpec(state.labelSize);
-      state.ejectedDots += Math.max(1, sp.lh + Math.round(sp.gapMm * DPMM) - 32);
-    }
-    setStatus('✓ 배출 완료');
+    // 인쇄가 끝나면 이미 커팅 위치에 서 있어서 보통은 할 일이 없다 (정렬도 안 깨진다)
+    setStatus('✓ 커팅 위치');
   } catch (e) { setStatus('오류: ' + e.message); }
   finally { busy(false); }
 }
