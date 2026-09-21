@@ -1030,9 +1030,11 @@ const feedCommand     = (dots) => new TextEncoder().encode(`FEED ${dots}\r\n`);
 // ── 티어오프 — 인쇄가 끝나면 절취선을 커팅바로 보낸다 ──
 // ESC/POS 래스터에는 티어오프 동작이 없어서 FEED / BACKFEED 로 직접 흉내낸다.
 // 112도트(14mm)는 실기로 맞춘 헤드↔커팅바 거리.
+// 인쇄할 때마다 갭센서로 위치를 다시 잡는다 (한 장씩 뽑아도 밀림이 누적되지 않는다)
+const CALIBRATE_EVERY_PRINT = false;
 const TEAR_FEED = 108;
 // 되감기는 같은 양으로 다 못 돌아온다 (역방향 백래시) — 40도트(5mm) 더
-const TEAR_BACKLASH = 40;
+const TEAR_BACKLASH = 32;
 const alignJobs = () => {
   const sp = sizeSpec(state.labelSize);
   // ★ 배출 이송량과 한 쌍으로 실기에서 맞춘 값이다. 함께 테스트하지 않고 바꾸지 말 것.
@@ -1578,7 +1580,7 @@ async function doPrint() {
         jobs.push({ data: backfeedCommand(state.tearOut + TEAR_BACKLASH), wait: ALIGN_WAIT });
         state.tearOut = 0;
       }
-      if (!state.aligned || state.alignedSize !== state.labelSize) {
+      if (CALIBRATE_EVERY_PRINT || !state.aligned || state.alignedSize !== state.labelSize) {
         for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
       }
       for (let i = 0; i < copies; i++) {
