@@ -34,9 +34,7 @@ const LABEL_SPECS = {
              fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
-             // 실기 2점: 704→위6mm, 656→아래5mm. 48도트=11mm → 1mm≈4.4도트 (8 아님)
-             // ★ 678 = 인쇄 전 되감기가 있을 때 맞는 값. 되감기를 없애면(=매인쇄캘리브 켜면) 691
-             gapMm: 3.0, labelX: 66,  backfeed: 678,
+             gapMm: 3.0, labelX: 66,  backfeed: 704,
              ejectExtra: 36,
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
@@ -178,13 +176,7 @@ const state = {
   aligned: false,     // 종이가 라벨 시작점에 맞춰져 있는지 (배출하면 깨짐)
   alignedSize: null,  // 어떤 라벨 크기로 맞춘 정렬인지 (크기가 바뀌면 다시 맞춰야 한다)
   ejectedDots: 0,     // 배출로 앞으로 밀어낸 양 — 되감을 때 더해야 한다
-  // 절취선을 커팅바로 내보내 둔 양 (다음 인쇄 전에 되감는다).
-  // ★ 0 이 아니라 108(TEAR_FEED) 로 시작한다 — "이미 나가 있다"가 기본값이다.
-  //   인쇄가 끝나면 항상 절취선을 커팅바로 보내두므로 용지는 거의 언제나 나가 있다.
-  //   이 값은 맥 앱(label_printer._tear_out)과 공유되지 않아서, 0 으로 시작하면
-  //   앱으로 뽑고 폰으로 뽑을 때 폰이 되감지 않아 108도트가 어긋났다.
-  //   양쪽 다 "나가 있다"로 시작하면 항상 되감으므로 언제나 같은 동작을 한다.
-  tearOut: 108,
+  tearOut: 0,         // 절취선을 커팅바로 내보내 둔 양 (다음 인쇄 전에 되감는다)
   overrides: {},      // 미리보기에서 직접 고친 값 (비우면 커피 데이터 값으로 돌아간다)
   shortcuts: [],      // 단축 버튼에 넣어둔 커피 / 블렌드
   blendOnly: false,   // 블렌드(프리셋)만 찍는 중인지
@@ -1038,12 +1030,8 @@ const feedCommand     = (dots) => new TextEncoder().encode(`FEED ${dots}\r\n`);
 // ── 티어오프 — 인쇄가 끝나면 절취선을 커팅바로 보낸다 ──
 // ESC/POS 래스터에는 티어오프 동작이 없어서 FEED / BACKFEED 로 직접 흉내낸다.
 // 112도트(14mm)는 실기로 맞춘 헤드↔커팅바 거리.
-// 인쇄할 때마다 갭센서로 위치를 다시 잡는다 (한 장씩 뽑아도 밀림이 누적되지 않는다).
-// 갭센서는 캘리브 때만 쓰이고 그 뒤는 개루프라, 이게 드리프트를 막는 유일한 방법이다.
+// 인쇄할 때마다 갭센서로 위치를 다시 잡는다 (한 장씩 뽑아도 밀림이 누적되지 않는다)
 const CALIBRATE_EVERY_PRINT = false;
-// 캘리브가 뱉은 빈 라벨은 되감아 그 자리에 인쇄한다 → 버리는 라벨 0장.
-// ★ CALIBRATE_EVERY_PRINT 와 함께 true 로 두면 인쇄마다 빈 라벨을 한 장씩 버린다.
-const SKIP_CALIB_LABEL = false;
 const TEAR_FEED = 108;
 // 되감기는 같은 양으로 다 못 돌아온다 (역방향 백래시) — 40도트(5mm) 더
 const TEAR_BACKLASH = 32;
@@ -1052,7 +1040,6 @@ const alignJobs = () => {
   // ★ 배출 이송량과 한 쌍으로 실기에서 맞춘 값이다. 함께 테스트하지 않고 바꾸지 말 것.
   let back = sp.backfeed + state.ejectedDots;
   if (state.ejectedDots) back += sp.ejectExtra;
-  if (SKIP_CALIB_LABEL) back -= sp.lh + Math.round(sp.gapMm * DPMM);
   state.ejectedDots = 0;
   return [calibrateCommand(), backfeedCommand(back)];
 };
@@ -1589,15 +1576,10 @@ async function doPrint() {
       const bytes = labelToRaster(buildOrder());
       const jobs = [];
       // 정렬이 안 돼 있을 때만 캘리브 (빈 라벨 1장). 배출은 하지 않는다.
-      // tearOut 은 108 로 시작하므로(= "이미 나가 있다") 기억에 의존하지 않고 항상 되감는다.
-      // 맥 앱과 이 값을 공유하지 않아서, 예전엔 앱으로 뽑고 폰으로 뽑으면 폰이 되감지
-      // 않아 108도트 어긋났다. 양쪽 다 항상 되감으면 언제나 같은 동작이 된다.
-      // ★ 매 인쇄마다 캘리브를 돌 때는 되감지 않는다 — 캘리브(PRINT 1)가 갭센서로
-      //   절대 위치를 잡으므로 커팅 위치에서 시작해도 같은 곳에 선다 (그땐 backfeed 691).
-      if (state.tearOut && !CALIBRATE_EVERY_PRINT) {
+      if (state.tearOut) {          // 커팅 위치로 나가 있으면 먼저 제자리로
         jobs.push({ data: backfeedCommand(state.tearOut + TEAR_BACKLASH), wait: ALIGN_WAIT });
+        state.tearOut = 0;
       }
-      state.tearOut = 0;
       if (CALIBRATE_EVERY_PRINT || !state.aligned || state.alignedSize !== state.labelSize) {
         for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
       }
