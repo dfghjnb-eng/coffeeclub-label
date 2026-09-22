@@ -36,7 +36,8 @@ const LABEL_SPECS = {
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
              gapMm: 3.0, labelX: 58,  backfeed: 704,
              ejectExtra: 36,
-             pitchAdjust: 1, detail: true,  divider: true,
+             // 정방향 이송이라 백래시가 없다 → 1mm = 8도트 (되감기의 4도트와 다르다)
+             pitchAdjust: 9, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
              vertDx: 0, vertDy: 4, logo: true, logoH: 40,   // vertDy: 2mm 내렸다가 1.5mm 되당김
              margin: 16,       // 네 변 여백 2mm — 가로형·세로형 모두
@@ -1034,7 +1035,8 @@ const feedCommand     = (dots) => new TextEncoder().encode(`FEED ${dots}\r\n`);
 const CALIBRATE_EVERY_PRINT = false;
 const TEAR_FEED = 108;
 // 되감기는 같은 양으로 다 못 돌아온다 (역방향 백래시) — 40도트(5mm) 더
-const TEAR_BACKLASH = 32;
+// 실기 2점: 32 → 아래 3mm, 56 → 위 3mm. 24도트가 6mm 움직인다 (1mm = 4도트)
+const TEAR_BACKLASH = 44;
 const alignJobs = () => {
   const sp = sizeSpec(state.labelSize);
   // ★ 배출 이송량과 한 쌍으로 실기에서 맞춘 값이다. 함께 테스트하지 않고 바꾸지 말 것.
