@@ -6,7 +6,9 @@
 <title>커피클럽 라벨 프린터</title>
 <meta name="description" content="커피클럽 RP420 라벨 프린터 웹 앱">
 <meta name="theme-color" content="#f7f7f9">
-<link rel="stylesheet" href="style.css">
+<!-- ?v= 는 캐시 무력화용. app.js / style.css 를 고치면 이 숫자도 올릴 것.
+     안 올리면 폰 브라우저가 옛날 파일을 계속 써서, 화면은 새것인데 동작은 옛것이 된다. -->
+<link rel="stylesheet" href="style.css?v=20260922b">
 </head>
 <body>
 <div class="wrap">
@@ -178,8 +180,8 @@
          어긋나면 캘리브를 다시 돌리지 말고 여기서 1mm 씩 밀어 맞춘다 -->
     <div class="nudge">
       <span class="nudgeLbl">인쇄 위치</span>
-      <button class="btn slim" id="nudgeUpBtn">▲ 위로 1mm</button>
-      <button class="btn slim" id="nudgeDownBtn">▼ 아래로 1mm</button>
+      <button class="btn slim" id="nudgeUpBtn">▲ 위 1mm</button>
+      <button class="btn slim" id="nudgeDownBtn">▼ 아래 1mm</button>
     </div>
     <div id="status"></div>
     <div class="hint" id="hintText">
@@ -191,6 +193,6 @@
 </div>
 
 <script src="lib/qrcode.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=20260922b"></script>
 </body>
 </html>
