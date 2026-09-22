@@ -35,8 +35,8 @@ const LABEL_SPECS = {
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
              // 실기 2점: 704→위6mm, 656→아래5mm. 48도트=11mm → 1mm≈4.4도트 (8 아님)
-             // 678 에서 맞았다가 인쇄 전 되감기(140) 제거로 아래 3mm → 13도트 더해 691
-             gapMm: 3.0, labelX: 66,  backfeed: 691,
+             // ★ 678 = 인쇄 전 되감기가 있을 때 맞는 값. 되감기를 없애면(=매인쇄캘리브 켜면) 691
+             gapMm: 3.0, labelX: 66,  backfeed: 678,
              ejectExtra: 36,
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
@@ -1034,7 +1034,7 @@ const feedCommand     = (dots) => new TextEncoder().encode(`FEED ${dots}\r\n`);
 // 112도트(14mm)는 실기로 맞춘 헤드↔커팅바 거리.
 // 인쇄할 때마다 갭센서로 위치를 다시 잡는다 (한 장씩 뽑아도 밀림이 누적되지 않는다).
 // 갭센서는 캘리브 때만 쓰이고 그 뒤는 개루프라, 이게 드리프트를 막는 유일한 방법이다.
-const CALIBRATE_EVERY_PRINT = true;
+const CALIBRATE_EVERY_PRINT = false;
 // 캘리브가 뱉은 빈 라벨은 되감아 그 자리에 인쇄한다 → 버리는 라벨 0장.
 // ★ CALIBRATE_EVERY_PRINT 와 함께 true 로 두면 인쇄마다 빈 라벨을 한 장씩 버린다.
 const SKIP_CALIB_LABEL = false;
