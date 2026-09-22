@@ -2140,6 +2140,11 @@ function init() {
       navigator.usb.addEventListener('disconnect', (e) => {
         if (e.device === state.device) {
           state.device = null; markConnected(false);
+          // 프린터를 껐다 켜면 프린터가 스스로 보정해 용지를 절취선에 맞춘다.
+          // 기억해둔 용지 위치를 그대로 쓰면 다음 인쇄가 19mm(라벨 절반쯤) 밀린다.
+          // 여기서 버리면 다시 연결한 뒤 첫 인쇄가 캘리브부터 다시 한다.
+          state.aligned = false; state.alignedSize = null;
+          state.tearOut = 0;     state.ejectedDots = 0;
           setStatus('프린터 연결이 끊어졌어요.');
         }
       });
