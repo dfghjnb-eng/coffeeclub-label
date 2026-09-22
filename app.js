@@ -34,7 +34,8 @@ const LABEL_SPECS = {
              fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
-             gapMm: 3.0, labelX: 66,  backfeed: 704,
+             // 실기 2점: 704→위6mm, 656→아래5mm. 48도트=11mm → 1mm≈4.4도트 (8 아님)
+             gapMm: 3.0, labelX: 66,  backfeed: 678,
              ejectExtra: 36,
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
@@ -1030,8 +1031,12 @@ const feedCommand     = (dots) => new TextEncoder().encode(`FEED ${dots}\r\n`);
 // ── 티어오프 — 인쇄가 끝나면 절취선을 커팅바로 보낸다 ──
 // ESC/POS 래스터에는 티어오프 동작이 없어서 FEED / BACKFEED 로 직접 흉내낸다.
 // 112도트(14mm)는 실기로 맞춘 헤드↔커팅바 거리.
-// 인쇄할 때마다 갭센서로 위치를 다시 잡는다 (한 장씩 뽑아도 밀림이 누적되지 않는다)
-const CALIBRATE_EVERY_PRINT = false;
+// 인쇄할 때마다 갭센서로 위치를 다시 잡는다 (한 장씩 뽑아도 밀림이 누적되지 않는다).
+// 갭센서는 캘리브 때만 쓰이고 그 뒤는 개루프라, 이게 드리프트를 막는 유일한 방법이다.
+const CALIBRATE_EVERY_PRINT = true;
+// 캘리브가 뱉은 빈 라벨은 되감아 그 자리에 인쇄한다 → 버리는 라벨 0장.
+// ★ CALIBRATE_EVERY_PRINT 와 함께 true 로 두면 인쇄마다 빈 라벨을 한 장씩 버린다.
+const SKIP_CALIB_LABEL = false;
 const TEAR_FEED = 108;
 // 되감기는 같은 양으로 다 못 돌아온다 (역방향 백래시) — 40도트(5mm) 더
 const TEAR_BACKLASH = 32;
@@ -1040,6 +1045,7 @@ const alignJobs = () => {
   // ★ 배출 이송량과 한 쌍으로 실기에서 맞춘 값이다. 함께 테스트하지 않고 바꾸지 말 것.
   let back = sp.backfeed + state.ejectedDots;
   if (state.ejectedDots) back += sp.ejectExtra;
+  if (SKIP_CALIB_LABEL) back -= sp.lh + Math.round(sp.gapMm * DPMM);
   state.ejectedDots = 0;
   return [calibrateCommand(), backfeedCommand(back)];
 };
