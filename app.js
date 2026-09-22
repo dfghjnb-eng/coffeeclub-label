@@ -1582,10 +1582,14 @@ async function doPrint() {
       const bytes = labelToRaster(buildOrder());
       const jobs = [];
       // 정렬이 안 돼 있을 때만 캘리브 (빈 라벨 1장). 배출은 하지 않는다.
-      if (state.tearOut) {          // 커팅 위치로 나가 있으면 먼저 제자리로
+      // ★ 매 인쇄마다 캘리브를 돌면 되감지 않는다. 캘리브(PRINT 1)가 갭센서로
+      //   절대 위치를 잡으므로 커팅 위치에서 시작해도 같은 곳에 선다.
+      //   tearOut 은 맥 앱(_tear_out)과 공유되지 않아, 앱으로 뽑고 폰으로 뽑으면
+      //   폰이 용지 위치를 몰라 108도트 어긋났다. 상태를 없애야 양쪽이 일치한다.
+      if (state.tearOut && !CALIBRATE_EVERY_PRINT) {
         jobs.push({ data: backfeedCommand(state.tearOut + TEAR_BACKLASH), wait: ALIGN_WAIT });
-        state.tearOut = 0;
       }
+      state.tearOut = 0;
       if (CALIBRATE_EVERY_PRINT || !state.aligned || state.alignedSize !== state.labelSize) {
         for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
       }
