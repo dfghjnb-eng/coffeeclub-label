@@ -174,6 +174,13 @@
       <button class="btn slim" id="ejectBtn">배출</button>
       <button class="btn slim" id="calibBtn">캘리브레이션</button>
     </div>
+    <!-- 인쇄 위치 미세조정 — 캘리브는 매번 같은 자리에 세우지 않으므로,
+         어긋나면 캘리브를 다시 돌리지 말고 여기서 1mm 씩 밀어 맞춘다 -->
+    <div class="nudge">
+      <span class="nudgeLbl">인쇄 위치</span>
+      <button class="btn slim" id="nudgeUpBtn">▲ 위로 1mm</button>
+      <button class="btn slim" id="nudgeDownBtn">▼ 아래로 1mm</button>
+    </div>
     <div id="status"></div>
     <div class="hint" id="hintText">
       인쇄하려면 <b>Chrome</b>(또는 Edge)에서 열고, RP420이 USB로 연결된 상태에서
