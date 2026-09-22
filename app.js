@@ -35,7 +35,8 @@ const LABEL_SPECS = {
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
              // 실기 2점: 704→위6mm, 656→아래5mm. 48도트=11mm → 1mm≈4.4도트 (8 아님)
-             gapMm: 3.0, labelX: 66,  backfeed: 678,
+             // 678 에서 맞았다가 인쇄 전 되감기(140) 제거로 아래 3mm → 13도트 더해 691
+             gapMm: 3.0, labelX: 66,  backfeed: 691,
              ejectExtra: 36,
              pitchAdjust: 1, detail: true,  divider: true,
              // 세로형에서만 더해지는 보정 · QR 위 로고 (8도트 = 1mm)
