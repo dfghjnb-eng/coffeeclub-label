@@ -1037,7 +1037,10 @@ const feedCommand     = (dots) => new TextEncoder().encode(`FEED ${dots}\r\n`);
 const CALIBRATE_EVERY_PRINT = false;
 const TEAR_FEED = 108;
 // 여러 장 인쇄 때 장 사이에 쉬는 시간 (ms) — 한 장씩 따로 누른 것과 같게 (맥 서버 COPY_GAP 과 같음)
-const COPY_GAP = 1500;
+const COPY_GAP = 500;
+// 인쇄 직전 되감기(152) 뒤 대기 (ms). 캘리브 대기(ALIGN_WAIT 2500)보다 짧게 — 맥 앱 RETRACT_WAIT 와 같음.
+// 너무 짧으면 되감기가 끝나기 전에 인쇄가 들어가 위로 밀린다.
+const RETRACT_WAIT = 1200;
 // 되감기는 같은 양으로 다 못 돌아온다 (역방향 백래시) — 40도트(5mm) 더
 // 실기 2점: 32 → 아래 3mm, 56 → 위 3mm. 24도트가 6mm 움직인다 (1mm = 4도트)
 const TEAR_BACKLASH = 44;
@@ -1593,14 +1596,14 @@ async function doPrint() {
       const jobs = [];
       // 정렬이 안 돼 있을 때만 캘리브 (빈 라벨 1장). 배출은 하지 않는다.
       if (state.tearOut) {          // 커팅 위치로 나가 있으면 먼저 제자리로
-        jobs.push({ data: backfeedCommand(state.tearOut + TEAR_BACKLASH), wait: ALIGN_WAIT });
+        jobs.push({ data: backfeedCommand(state.tearOut + TEAR_BACKLASH), wait: RETRACT_WAIT });
         state.tearOut = 0;
       }
       if (CALIBRATE_EVERY_PRINT || !state.aligned || state.alignedSize !== state.labelSize) {
         for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
         // ★ 캘리브는 용지를 "인쇄가 끝난 뒤 쉬는 자리"(절취선이 커팅바보다 3mm)에 세운다.
         //   평소 인쇄처럼 먼저 되감고 찍어야 한다 — 안 그러면 15mm 아래로 내려간다.
-        jobs.push({ data: backfeedCommand(TEAR_FEED + TEAR_BACKLASH), wait: ALIGN_WAIT });
+        jobs.push({ data: backfeedCommand(TEAR_FEED + TEAR_BACKLASH), wait: RETRACT_WAIT });
       }
       // 한 장 = 인쇄 → 피치보정 → 절취선을 커팅바로 (보내자마자 연결이 닫히면 이송이 안 돼 1초 둔다)
       const oneLabel = () => {
@@ -1616,7 +1619,7 @@ async function doPrint() {
       for (let i = 1; i < copies; i++) {
         await sleep(COPY_GAP);                              // 이전 장의 이송이 완전히 끝나게
         await sendUSBJobs([
-          { data: backfeedCommand(TEAR_FEED + TEAR_BACKLASH), wait: ALIGN_WAIT },
+          { data: backfeedCommand(TEAR_FEED + TEAR_BACKLASH), wait: RETRACT_WAIT },
           ...oneLabel(),
         ]);
       }
@@ -1640,7 +1643,7 @@ async function doCalibrate() {
       // (예전엔 캘리브 명령만 보내고 되감기를 빠뜨려 용지가 엉뚱한 곳에 섰다)
       const jobs = [];
       if (state.tearOut) {
-        jobs.push({ data: backfeedCommand(state.tearOut + TEAR_BACKLASH), wait: ALIGN_WAIT });
+        jobs.push({ data: backfeedCommand(state.tearOut + TEAR_BACKLASH), wait: RETRACT_WAIT });
       }
       for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
       await sendUSBJobs(jobs);
