@@ -34,7 +34,9 @@ const LABEL_SPECS = {
              fonts:  { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 },
              fontsV: { fsNum: 18, fsMain: 14, fsSub: 11, fsTiny: 8, fsCustom: 11, fsDate: 11 } },
   '50x30': { name: '50 × 30 mm', wMm: 50, hMm: 30, lw: 400, lh: 240,
-             gapMm: 3.0, labelX: 58,  backfeed: 704,
+             // 캘리브 후 절취선이 커팅바보다 3mm 나온 자리에 서게 하는 값 (실기 기준).
+             // 용지를 어떻게 넣어도 841 이면 3mm 에 선다. 대신 캘리브마다 빈 라벨 1장이 나간다.
+             gapMm: 3.0, labelX: 58,  backfeed: 841,
              ejectExtra: 36,
              // 정방향 이송이라 백래시가 없다 → 1mm = 8도트 (되감기의 4도트와 다르다)
              pitchAdjust: 9, detail: true,  divider: true,
