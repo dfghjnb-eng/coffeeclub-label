@@ -1586,6 +1586,9 @@ async function doPrint() {
       }
       if (CALIBRATE_EVERY_PRINT || !state.aligned || state.alignedSize !== state.labelSize) {
         for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
+        // ★ 캘리브는 용지를 "인쇄가 끝난 뒤 쉬는 자리"(절취선이 커팅바보다 3mm)에 세운다.
+        //   평소 인쇄처럼 먼저 되감고 찍어야 한다 — 안 그러면 15mm 아래로 내려간다.
+        jobs.push({ data: backfeedCommand(TEAR_FEED + TEAR_BACKLASH), wait: ALIGN_WAIT });
       }
       for (let i = 0; i < copies; i++) {
         jobs.push({ data: bytes });
@@ -1624,10 +1627,19 @@ async function doCalibrate() {
     if (state.mode === 'server') {
       await serverPost('calibrate', { size: state.labelSize });
     } else {
-      await sendUSB(calibrateCommand());
+      // 맥 앱 align() 과 같은 순서: 뜯는 자리에 나가 있으면 먼저 되감고 → 캘리브 → 되감기.
+      // (예전엔 캘리브 명령만 보내고 되감기를 빠뜨려 용지가 엉뚱한 곳에 섰다)
+      const jobs = [];
+      if (state.tearOut) {
+        jobs.push({ data: backfeedCommand(state.tearOut + TEAR_BACKLASH), wait: ALIGN_WAIT });
+      }
+      for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
+      await sendUSBJobs(jobs);
     }
     state.aligned = true;
     state.alignedSize = state.labelSize;
+    // 캘리브는 용지를 뜯는 자리(절취선 +3mm)에 세운다 → 다음 인쇄가 되감고 찍게 한다
+    state.tearOut = TEAR_FEED;
     setStatus('✓ 캘리브레이션 완료');
   } catch (e) { setStatus('오류: ' + e.message); }
   finally { busy(false); }
