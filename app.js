@@ -1600,19 +1600,24 @@ async function doPrint() {
         //   평소 인쇄처럼 먼저 되감고 찍어야 한다 — 안 그러면 15mm 아래로 내려간다.
         jobs.push({ data: backfeedCommand(TEAR_FEED + TEAR_BACKLASH), wait: ALIGN_WAIT });
       }
+      // ★ 여러 장도 한 장씩 뽑을 때와 똑같이 — 장마다 되감기 → 인쇄 → 절취선을 커팅바로.
+      //   예전엔 여러 장을 붙여서 연달아 찍어 장마다 오차가 쌓여 뒤로 갈수록 밀렸다.
+      //   첫 장은 위에서 이미 되감았으므로 둘째 장부터 되감는다.
       for (let i = 0; i < copies; i++) {
+        if (i > 0) jobs.push({ data: backfeedCommand(TEAR_FEED + TEAR_BACKLASH), wait: ALIGN_WAIT });
         jobs.push({ data: bytes });
         if (sizeSpec(state.labelSize).pitchAdjust) {
           jobs.push({ data: pitchFeedCommand(), wait: 300 });
         }
+        // 절취선을 커팅바로. 보내자마자 다음 명령/연결 종료가 오면 이송이 안 될 수 있어 1초 둔다
+        jobs.push({ data: feedCommand(TEAR_FEED), wait: 1000 });
       }
-      jobs.push({ data: feedCommand(TEAR_FEED) });   // 절취선을 커팅바로
       await sendUSBJobs(jobs);
       state.tearOut = TEAR_FEED;
       state.aligned = true;
       state.alignedSize = state.labelSize;
     }
-    setStatus(`✓ 인쇄 완료 (${copies}장) · 뜯으려면 [배출]`);
+    setStatus(`✓ 인쇄 완료 (${copies}장)`);
   } catch (e) {
     setStatus('오류: ' + e.message);
   } finally { busy(false); }
