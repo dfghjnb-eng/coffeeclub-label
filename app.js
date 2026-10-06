@@ -1608,19 +1608,6 @@ async function doPrint() {
   } finally { busy(false); }
 }
 
-async function doEject() {
-  busy(true, '배출 중…');
-  try {
-    if (state.mode === 'server') await serverPost('eject', { size: state.labelSize });
-    else if (!state.tearOut) { await sendUSB(feedCommand(TEAR_FEED)); state.tearOut = TEAR_FEED; }
-    // 한 피치를 밀어 라벨이 완전히 나온다. 다음 인쇄 전에 한 장 + 1mm 를 되감아
-    // 그 빈 라벨 위에 다시 찍는다 → 버려지는 라벨이 없다 (실기로 맞춘 값)
-    // 인쇄가 끝나면 이미 커팅 위치에 서 있어서 보통은 할 일이 없다 (정렬도 안 깨진다)
-    setStatus('✓ 커팅 위치');
-  } catch (e) { setStatus('오류: ' + e.message); }
-  finally { busy(false); }
-}
-
 async function doCalibrate() {
   busy(true, '캘리브레이션 중… (라벨 1장 소비)');
   try {
@@ -1645,34 +1632,10 @@ async function doCalibrate() {
   finally { busy(false); }
 }
 
-// 미세조정 한 칸 = 1mm (이송은 1mm = 8도트)
-const NUDGE_DOTS = 8;
-
-// 캘리브 없이 용지만 옮긴다 — 인쇄 위치 미세조정.
-//   dots > 0 → FEED     → 인쇄가 라벨 아래쪽으로
-//   dots < 0 → BACKFEED → 인쇄가 라벨 위쪽으로
-// state.tearOut / state.aligned 는 일부러 건드리지 않는다. 용지를 그냥 민 것이라
-// 다음 인쇄부터 그대로 반영되고, 캘리브가 돌기 전까지 유지된다.
-async function doNudge(dots) {
-  const mm = Math.abs(dots) / 8;
-  const dir = dots > 0 ? '아래로' : '위로';
-  busy(true, `인쇄 위치 ${dir} ${mm}mm…`);
-  try {
-    if (state.mode === 'server') {
-      await serverPost('nudge', { dots });
-    } else {
-      await sendUSB(dots > 0 ? feedCommand(dots) : backfeedCommand(-dots));
-      await sleep(1500);   // 보내자마자 끊으면 이송이 실행되지 않는다
-    }
-    setStatus(`✓ 인쇄 위치 ${dir} ${mm}mm`);
-  } catch (e) { setStatus('오류: ' + e.message); }
-  finally { busy(false); }
-}
-
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const setStatus = (msg) => { $('status').textContent = msg; };
 function busy(on, msg) {
-  ['printBtn', 'ejectBtn', 'ejectBtn2', 'calibBtn', 'nudgeUpBtn', 'nudgeDownBtn'].forEach((id) => {
+  ['printBtn', 'calibBtn'].forEach((id) => {
     const el = $(id); if (el) el.disabled = on;
   });
   if (msg) setStatus(msg);
@@ -2150,11 +2113,7 @@ function init() {
 
   $('connectBtn').onclick = connectPrinter;
   $('printBtn').onclick = doPrint;
-  $('ejectBtn').onclick = doEject;
-  $('ejectBtn2').onclick = doEject;   // 단축 버튼 아래에도 하나 더
   $('calibBtn').onclick = doCalibrate;
-  $('nudgeUpBtn').onclick   = () => doNudge(-NUDGE_DOTS);
-  $('nudgeDownBtn').onclick = () => doNudge(NUDGE_DOTS);
 
   initPreviewEditing();   // 미리보기 글자를 눌러 바로 고치기
 
