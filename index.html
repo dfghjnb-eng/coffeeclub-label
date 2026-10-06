@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#f7f7f9">
 <!-- ?v= 는 캐시 무력화용. app.js / style.css 를 고치면 이 숫자도 올릴 것.
      안 올리면 폰 브라우저가 옛날 파일을 계속 써서, 화면은 새것인데 동작은 옛것이 된다. -->
-<link rel="stylesheet" href="style.css?v=20261006d">
+<link rel="stylesheet" href="style.css?v=20261006e">
 </head>
 <body>
 <div class="wrap">
@@ -41,6 +41,7 @@
       <input type="text" id="typeTitle"
              placeholder="제목 직접 입력 — 비우면 위 형식이 찍힙니다" autocomplete="off">
       <button class="pill mini" id="typeAdd">버튼 추가</button>
+      <button class="pill mini danger" id="typeDel" disabled>지우기</button>
     </div>
 
     <div class="switchrow">
@@ -188,6 +189,6 @@
 </div>
 
 <script src="lib/qrcode.js"></script>
-<script src="app.js?v=20261006d"></script>
+<script src="app.js?v=20261006e"></script>
 </body>
 </html>

@@ -1192,14 +1192,7 @@ function paintTypeSeg() {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
-    if (custom) {
-      b.className = 'custom';
-      const x = document.createElement('button');
-      x.type = 'button'; x.className = 'del'; x.textContent = '×';
-      x.setAttribute('aria-label', '이 버튼 지우기');
-      x.onclick = (e) => { e.stopPropagation(); removeCustomType(label); };
-      b.appendChild(x);
-    }
+    if (custom) b.className = 'custom';
     b.onclick = onPick;
     seg.appendChild(b);
     return b;
@@ -1213,6 +1206,23 @@ function paintTypeSeg() {
   for (const t of state.customTypes) {
     mk(t, () => setTypeTitle(t), true).classList.toggle('on', title === t);
   }
+
+  // [지우기] 는 직접 만든 형식을 골랐을 때만 누를 수 있다 (기본 형식은 못 지운다)
+  const del = $('typeDel');
+  if (del) del.disabled = !state.customTypes.includes(title);
+}
+
+/** [지우기] — 지금 고른, 직접 만든 형식 버튼을 지운다.
+ *
+ *  예전엔 형식 버튼마다 × 를 안에 붙였는데 두 가지가 겹쳐 고장 나 있었다.
+ *   · 버튼 안에 버튼이 들어간 구조라 브라우저마다 누르는 동작이 달랐다
+ *   · 형식 버튼에 거는 min-width(104px)가 안쪽 × 에도 걸려, × 의 누르는 영역이
+ *     버튼 대부분을 덮었다 — 고르려고 눌러도 지워졌다
+ *  그래서 고르기(형식 버튼)와 지우기(이 버튼)를 따로 나눴다. */
+function deleteSelectedType() {
+  const t = ($('typeTitle').value || '').trim();
+  if (state.customTypes.includes(t)) return removeCustomType(t);
+  setStatus(state.drinkType ? '기본 형식은 지울 수 없어요.' : '지울 형식 버튼을 먼저 눌러 고르세요.');
 }
 
 async function saveCustomTypes() {
@@ -2049,6 +2059,7 @@ function init() {
   $('quickVertical').onchange = (e) => setVertical(e.target.checked);
   $('typeTitle').oninput = (e) => setTypeTitle(e.target.value);
   $('typeAdd').onclick = () => addCustomType($('typeTitle').value);
+  $('typeDel').onclick = deleteSelectedType;
 
   // 형식 버튼 · 날짜 스위치 · 칸 늘리기
   paintTypeSeg();
