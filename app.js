@@ -1036,6 +1036,8 @@ const feedCommand     = (dots) => new TextEncoder().encode(`FEED ${dots}\r\n`);
 // 인쇄할 때마다 갭센서로 위치를 다시 잡는다 (한 장씩 뽑아도 밀림이 누적되지 않는다)
 const CALIBRATE_EVERY_PRINT = false;
 const TEAR_FEED = 108;
+// 여러 장 인쇄 때 장 사이에 쉬는 시간 (ms) — 한 장씩 따로 누른 것과 같게 (맥 서버 COPY_GAP 과 같음)
+const COPY_GAP = 1500;
 // 되감기는 같은 양으로 다 못 돌아온다 (역방향 백래시) — 40도트(5mm) 더
 // 실기 2점: 32 → 아래 3mm, 56 → 위 3mm. 24도트가 6mm 움직인다 (1mm = 4도트)
 const TEAR_BACKLASH = 44;
@@ -1600,19 +1602,24 @@ async function doPrint() {
         //   평소 인쇄처럼 먼저 되감고 찍어야 한다 — 안 그러면 15mm 아래로 내려간다.
         jobs.push({ data: backfeedCommand(TEAR_FEED + TEAR_BACKLASH), wait: ALIGN_WAIT });
       }
-      // ★ 여러 장도 한 장씩 뽑을 때와 똑같이 — 장마다 되감기 → 인쇄 → 절취선을 커팅바로.
-      //   예전엔 여러 장을 붙여서 연달아 찍어 장마다 오차가 쌓여 뒤로 갈수록 밀렸다.
-      //   첫 장은 위에서 이미 되감았으므로 둘째 장부터 되감는다.
-      for (let i = 0; i < copies; i++) {
-        if (i > 0) jobs.push({ data: backfeedCommand(TEAR_FEED + TEAR_BACKLASH), wait: ALIGN_WAIT });
-        jobs.push({ data: bytes });
-        if (sizeSpec(state.labelSize).pitchAdjust) {
-          jobs.push({ data: pitchFeedCommand(), wait: 300 });
-        }
-        // 절취선을 커팅바로. 보내자마자 다음 명령/연결 종료가 오면 이송이 안 될 수 있어 1초 둔다
-        jobs.push({ data: feedCommand(TEAR_FEED), wait: 1000 });
+      // 한 장 = 인쇄 → 피치보정 → 절취선을 커팅바로 (보내자마자 연결이 닫히면 이송이 안 돼 1초 둔다)
+      const oneLabel = () => {
+        const j = [{ data: bytes }];
+        if (sizeSpec(state.labelSize).pitchAdjust) j.push({ data: pitchFeedCommand(), wait: 300 });
+        j.push({ data: feedCommand(TEAR_FEED), wait: 1000 });
+        return j;
+      };
+      // ★ 여러 장도 "인쇄 버튼을 여러 번 누른 것"과 똑같이 — 장마다 연결을 새로 열고 닫는다.
+      //   한 연결로 장을 이어 보내면 이전 장이 끝나기 전에 다음 되감기가 들어가
+      //   장마다 조금씩 위로 올라갔다 (3장째 1~2mm, 실기). 한 장씩은 정확했다.
+      await sendUSBJobs([...jobs, ...oneLabel()]);          // 첫 장 (앞에 되감기·캘리브가 붙는다)
+      for (let i = 1; i < copies; i++) {
+        await sleep(COPY_GAP);                              // 이전 장의 이송이 완전히 끝나게
+        await sendUSBJobs([
+          { data: backfeedCommand(TEAR_FEED + TEAR_BACKLASH), wait: ALIGN_WAIT },
+          ...oneLabel(),
+        ]);
       }
-      await sendUSBJobs(jobs);
       state.tearOut = TEAR_FEED;
       state.aligned = true;
       state.alignedSize = state.labelSize;
