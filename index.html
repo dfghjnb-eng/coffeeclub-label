@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#f7f7f9">
 <!-- ?v= 는 캐시 무력화용. app.js / style.css 를 고치면 이 숫자도 올릴 것.
      안 올리면 폰 브라우저가 옛날 파일을 계속 써서, 화면은 새것인데 동작은 옛것이 된다. -->
-<link rel="stylesheet" href="style.css?v=20261006c">
+<link rel="stylesheet" href="style.css?v=20261006d">
 </head>
 <body>
 <div class="wrap">
@@ -170,8 +170,7 @@
     </div>
     <div class="preview"><canvas id="previewCanvas" width="720" height="360"></canvas></div>
     <div class="steps" style="margin-top:12px;grid-template-columns:1fr" id="copySteps"></div>
-    <div class="actions" style="margin-top:12px">
-      <button class="btn primary" id="printBtn">인쇄</button>
+    <div class="actions" style="margin-top:12px;justify-content:flex-end">
       <button class="btn slim" id="calibBtn">캘리브레이션</button>
     </div>
     <div id="status"></div>
@@ -183,7 +182,12 @@
 
 </div>
 
+<!-- 인쇄 버튼은 화면 아래에 늘 떠 있다 — 어디까지 스크롤했든 바로 인쇄 -->
+<div class="printFloat">
+  <button class="btn primary" id="printBtn">인쇄</button>
+</div>
+
 <script src="lib/qrcode.js"></script>
-<script src="app.js?v=20261006c"></script>
+<script src="app.js?v=20261006d"></script>
 </body>
 </html>
