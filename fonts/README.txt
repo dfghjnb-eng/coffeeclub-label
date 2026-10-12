@@ -14,3 +14,10 @@
   개인·기업 모두 무료로 쓰고 배포할 수 있으나 "임의로 수정·편집할 수 없고
   배포되는 형태 그대로" 써야 한다. 그래서 이 두 파일만은 서브셋으로 줄이지 않고
   넥슨이 배포하는 TTF 원본을 그대로 두었다 (내려받은 파일과 md5 동일).
+
+· Brie Label KR Scan (brie-r.woff2 / brie-b.woff2)
+  매장 맥의 ~/Library/Fonts/BrieLabelKRScan-Regular.ttf · -Bold.ttf 를 woff2 로만
+  바꿨다 (글자 11,387자 그대로, 원본과 렌더링 동일 확인). 폰트 정보의 저작권 칸:
+  "Typeface reverse-engineered from a printed product label."
+  ㅐ 의 안쪽 획이 짧게 보이는 등 일반 서체와 다른 모양은 원래 디자인이다.
+  같은 패밀리의 Brie Label / Brie Label Ink 는 한글이 없어 넣지 않았다.

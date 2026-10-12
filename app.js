@@ -147,6 +147,8 @@ const FONTS = {
   '나눔고딕코딩 Bold':        'NanumGothicCodingBold',
   '메이플스토리 Light':  'MaplestoryLight',
   '메이플스토리 Bold':   'MaplestoryBold',
+  'Brie Regular':        'BrieR',
+  'Brie Bold':           'BrieB',
   '시스템 고딕':  'Apple SD Gothic Neo',
 };
 
@@ -155,7 +157,7 @@ const FONT_GROUPS = [
   ['고딕', ['서울한강 Light', '서울한강 Regular', '서울한강 Bold', '서울한강 ExtraBold', '서울한강 장체 Light', '서울한강 장체 Medium', '서울한강 장체 Bold', '서울한강 장체 ExtraBold', '서울남산 Light', '서울남산 Regular', '서울남산 Bold', '서울남산 ExtraBold', '서울남산 장체 Light', '서울남산 장체 Medium', '서울남산 장체 Bold', '서울남산 장체 ExtraBold', '한글누리 Regular', '한글누리 Bold', '나눔고딕', '나눔고딕 Bold', '나눔고딕 ExtraBold', '고딕A1 Light', '고딕A1', '고딕A1 Bold', '고딕A1 Black', '노토 산스', 'IBM 플렉스', 'IBM 플렉스 Bold', '해바라기 Light', '해바라기', '해바라기 Bold', '동글 Light', '동글', '동글 Bold']],
   ['명조', ['나눔명조', '나눔명조 Bold', '송명', '고운바탕', '고운바탕 Bold', '고운돋움', '함렛', '디필레이아']],
   ['손글씨', ['나눔손글씨 펜', '나눔손글씨 붓', '개구 Light', '개구', '개구 Bold', '감자꽃', '하이멜로디', '푸어스토리', '싱글데이', '큐트', '연성', '기랑해랑', '동해독도', '스타일리시']],
-  ['장식', ['BM 도현', '검은고딕', '주아', '가속', '베이글팻', '모이라이', '메이플스토리 Light', '메이플스토리 Bold']],
+  ['장식', ['BM 도현', '검은고딕', '주아', '가속', '베이글팻', '모이라이', '메이플스토리 Light', '메이플스토리 Bold', 'Brie Regular', 'Brie Bold']],
   ['모노', ['나눔고딕코딩', '나눔고딕코딩 Bold']],
   ['기본', ['시스템 고딕']],
 ];

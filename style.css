@@ -66,6 +66,8 @@
 /* 메이플스토리체는 라이선스상 수정 금지라 넥슨 배포 TTF 원본 그대로 쓴다 */
 @font-face { font-family:'MaplestoryLight'; src:url('fonts/Maplestory Light.ttf') format('truetype'); font-display:swap; }
 @font-face { font-family:'MaplestoryBold';  src:url('fonts/Maplestory Bold.ttf')  format('truetype'); font-display:swap; }
+@font-face { font-family:'BrieR';           src:url('fonts/brie-r.woff2') format('woff2'); font-display:swap; }
+@font-face { font-family:'BrieB';           src:url('fonts/brie-b.woff2') format('woff2'); font-display:swap; }
 
 /* ─────────── 기본 ─────────── */
 * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
