@@ -750,6 +750,7 @@ function renderPreviewCanvas(o) {
 // ─────────── 미리보기 ───────────
 let renderPending = false;
 function render() {
+  updateStats();                    // 상단 상태 타일 (넓은 화면) — 가벼운 글자 갱신뿐
   if (renderPending) return;
   renderPending = true;
   // 화면이 숨겨지면 requestAnimationFrame 이 멈춘다.
@@ -2003,6 +2004,53 @@ function lockZoom() {
 }
 
 // ─────────── 초기화 ───────────
+// ─────────── 대시보드: 상태 타일 · 왼쪽 메뉴 ───────────
+// 넓은 화면에서만 보이는 것들이다 (폰에선 CSS 로 숨김). 요소가 없어도 조용히 넘어간다.
+
+/** 상태 타일 4개 — 프린터 · 라벨 · 형식 · 폰트. render() 가 부를 때마다 갱신한다. */
+function updateStats() {
+  const set = (id, v) => { const el = $(id); if (el && el.textContent !== v) el.textContent = v; };
+  const conn = $('connectTxt');
+  if (conn) {
+    set('statPrinter', conn.textContent.trim());
+    const tile = $('statPrinterTile');
+    if (tile) tile.classList.toggle('on',
+      $('connectBtn').classList.contains('on') || /매장 프린터|연결됨/.test(conn.textContent));
+  }
+  // '50 × 30 mm · 가로형' 은 중간 폭 타일에서 잘려서 짧게 쓴다 → '50×30 · 가로'
+  const size = sizeSpec(state.labelSize).name.replace(' mm', '').replace(/\s*×\s*/, '×');
+  set('statLabel', `${size} · ${state.vertical ? '세로' : '가로'}`);
+  const title = $('typeTitle') ? $('typeTitle').value.trim() : '';
+  set('statType', title || state.drinkType || '없음');
+  if ($('fontPickName')) set('statFont', $('fontPickName').textContent.trim());
+}
+
+/** 왼쪽 아이콘 메뉴 — 누르면 그 카드로 부드럽게 가고, 테두리를 잠깐 밝힌다. */
+function initDashboard() {
+  if ($('heroDate')) $('heroDate').textContent = todayStr();
+
+  const links = [...document.querySelectorAll('.sidebar a[href^="#"]')];
+  for (const a of links) {
+    a.addEventListener('click', (e) => {
+      const card = $(a.getAttribute('href').slice(1));
+      if (!card) return;
+      e.preventDefault();
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      links.forEach((x) => x.classList.toggle('on', x === a));
+      card.classList.remove('flash');
+      void card.offsetWidth;          // 애니메이션을 처음부터 다시
+      card.classList.add('flash');
+    });
+  }
+  if (links[0]) links[0].classList.add('on');
+
+  // 프린터 연결 글자는 여러 곳에서 바뀐다 — 바뀔 때마다 타일도 따라가게
+  const watch = (id) => { const el = $(id); if (el) new MutationObserver(updateStats).observe(el, { childList: true, characterData: true, subtree: true }); };
+  watch('connectTxt');
+  watch('fontPickName');
+  updateStats();
+}
+
 function init() {
   lockZoom();
   // 폰트 셀렉트
@@ -2189,6 +2237,7 @@ function init() {
   state.checked = new Set(DEFAULT_ORDER);
   buildOrderList();
   ensureFont();
+  initDashboard();
 }
 
 document.addEventListener('DOMContentLoaded', init);

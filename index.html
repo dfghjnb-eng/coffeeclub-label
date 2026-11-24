@@ -8,187 +8,251 @@
 <meta name="theme-color" content="#f7f7f9">
 <!-- ?v= 는 캐시 무력화용. app.js / style.css 를 고치면 이 숫자도 올릴 것.
      안 올리면 폰 브라우저가 옛날 파일을 계속 써서, 화면은 새것인데 동작은 옛것이 된다. -->
-<link rel="stylesheet" href="style.css?v=20261012a">
+<link rel="stylesheet" href="style.css?v=20261124a">
 </head>
 <body>
-<div class="wrap">
+<!-- 화면 틀 — 넓은 화면에선 상단바 · 왼쪽 메뉴 · 여러 칸, 폰에선 한 칸 (style.css '대시보드 레이아웃') -->
+<div class="shell">
 
-  <div class="top">
-    <h1>커피클럽 라벨 프린터</h1>
+  <!-- ─────────── 상단바: 로고 · 커피 검색 · 프린터 연결 ─────────── -->
+  <header class="topbar">
+    <div class="brand"><img src="logo-mark.png" alt=""><span>커피클럽 라벨</span></div>
+    <label class="tsearch">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="search" id="coffeeSearch" placeholder="커피 이름 검색" autocomplete="off">
+    </label>
     <div class="spacer"></div>
     <button id="connectBtn"><span class="dot"></span><span id="connectTxt">프린터 연결</span></button>
-  </div>
+  </header>
 
-  <!-- 커피 선택 -->
-  <div class="card">
-    <div class="card-hd">
-      <span class="sec">커피 선택</span>
-      <div class="spacer"></div>
-      <button class="pill" id="refreshBtn">새로고침</button>
-    </div>
-    <input type="search" id="coffeeSearch" placeholder="🔍 커피 이름 검색" autocomplete="off">
-    <div class="row" style="margin-top:10px">
-      <select id="coffeeSelect"><option>불러오는 중…</option></select>
-    </div>
-    <div class="flavor" id="flavor">—</div>
-  </div>
+  <!-- ─────────── 왼쪽 아이콘 메뉴 (넓은 화면에서만) — 누르면 그 카드로 ─────────── -->
+  <nav class="sidebar" aria-label="바로가기">
+    <a href="#secCoffee" title="커피 선택"><svg viewBox="0 0 24 24"><path d="M4 9h12v4.5A5.5 5.5 0 0 1 10.5 19h-1A5.5 5.5 0 0 1 4 13.5z"/><path d="M16 11h1.5a2.5 2.5 0 0 1 0 5H16"/><path d="M8 3.5c0 1.5 1 1.5 1 3M12 3.5c0 1.5 1 1.5 1 3"/></svg></a>
+    <a href="#secType" title="형식 · 단축 버튼"><svg viewBox="0 0 24 24"><path d="M3.5 12.5V4h8.5l8.5 8.5-8 8z"/><circle cx="8" cy="8.5" r="1.4"/></svg></a>
+    <a href="#secRoast" title="로스팅 포인트"><svg viewBox="0 0 24 24"><path d="M12 3c1 3.5 5.5 5.5 5.5 10.5a5.5 5.5 0 0 1-11 0c0-3 2-4.2 2-6.5 1.2 1 2 2.2 2 3.5 0-2.5.3-5 1.5-7.5z"/></svg></a>
+    <a href="#secFont" title="폰트"><svg viewBox="0 0 24 24"><path d="M3.5 18 8.5 6h1l5 12M5.5 14h7"/><circle cx="18" cy="15.5" r="2.5"/><path d="M20.5 12.5V18"/></svg></a>
+    <a href="#secText" title="추가 텍스트"><svg viewBox="0 0 24 24"><path d="M4 6.5h16M4 11.5h16M4 16.5h10"/></svg></a>
+    <a href="#secLabel" title="라벨 크기 · 방향"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2.5"/><path d="M7.5 6v3M12 6v2M16.5 6v3"/></svg></a>
+    <a href="#secQR" title="QR 코드"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"/><path d="M14 14h3v3h-3zM20.5 14v6.5M14 20.5h3"/></svg></a>
+    <a href="#secOrder" title="표시 설정"><svg viewBox="0 0 24 24"><path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" stroke-width="3"/></svg></a>
+    <div class="gap"></div>
+    <a href="#secPreview" title="미리보기 · 인쇄"><svg viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg></a>
+  </nav>
 
-  <!-- 빠른 인쇄: 형식 · 날짜 · 단축 버튼 -->
-  <div class="card">
-    <div class="card-hd"><span class="sec">형식 · 라벨 맨 위에 찍힙니다</span></div>
-    <div class="seg wrap" id="typeSeg"></div>
-    <div class="row" style="margin-top:10px">
-      <input type="text" id="typeTitle"
-             placeholder="제목 직접 입력 — 비우면 위 형식이 찍힙니다" autocomplete="off">
-      <button class="pill mini" id="typeAdd">버튼 추가</button>
-      <button class="pill mini danger" id="typeDel" disabled>지우기</button>
-    </div>
+  <main class="main">
 
-    <div class="switchrow">
-      <label class="sw">
-        <input type="checkbox" id="quickVertical"><span class="track"></span>
-      </label>
-      <span class="swtext">세로형 — 글자를 <b>세워서</b> 찍습니다</span>
-    </div>
+    <!-- ─────────── 인사말 · 상태 타일 (넓은 화면에서만) ─────────── -->
+    <section class="hero">
+      <h1>오늘의 라벨 ☕</h1>
+      <p>원두를 고르면 오른쪽 미리보기에 바로 보입니다 · <span id="heroDate"></span></p>
+    </section>
 
-    <div class="switchrow">
-      <label class="sw">
-        <input type="checkbox" id="quickDate"><span class="track"></span>
-      </label>
-      <span class="swtext">날짜 찍기 — 언제나 오늘 날짜 <b id="todayText"></b></span>
-    </div>
+    <section class="stats">
+      <div class="stat" id="statPrinterTile">
+        <span class="k"><svg viewBox="0 0 24 24"><path d="M7 9V3.5h10V9"/><path d="M6.5 17.5H4.5v-6A2.5 2.5 0 0 1 7 9h10a2.5 2.5 0 0 1 2.5 2.5v6h-2"/><path d="M7.5 14h9v6.5h-9z"/></svg>프린터</span>
+        <b id="statPrinter">—</b>
+      </div>
+      <div class="stat">
+        <span class="k"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2.5"/></svg>라벨</span>
+        <b id="statLabel">—</b>
+      </div>
+      <div class="stat">
+        <span class="k"><svg viewBox="0 0 24 24"><path d="M3.5 12.5V4h8.5l8.5 8.5-8 8z"/><circle cx="8" cy="8.5" r="1.4"/></svg>형식</span>
+        <b id="statType">—</b>
+      </div>
+      <div class="stat">
+        <span class="k"><svg viewBox="0 0 24 24"><path d="M3.5 18 8.5 6h1l5 12M5.5 14h7"/><circle cx="18" cy="15.5" r="2.5"/><path d="M20.5 12.5V18"/></svg>폰트</span>
+        <b id="statFont">—</b>
+      </div>
+    </section>
 
-    <div class="switchrow">
-      <label class="sw">
-        <input type="checkbox" id="quickHalf"><span class="track"></span>
-      </label>
-      <span class="swtext">하프카페인 — 라벨 <b>제일 아래</b>에 찍힙니다</span>
-    </div>
+    <div class="cols">
 
-    <div class="card-hd" style="margin-top:16px">
-      <span class="sec">단축 버튼</span>
-      <div class="spacer"></div>
-      <span class="sec swipe-tip" style="font-weight:500">커피·프리셋을 칸으로 끌어다 놓기</span>
-    </div>
-    <div id="dragChip" class="dragchip">커피를 먼저 고르세요</div>
-    <div id="presetChip" class="dragchip">프리셋을 먼저 고르세요</div>
-    <div id="shortcutSlots" class="slots"></div>
-    <div class="slotbar">
-      <div class="spacer"></div>
-      <button type="button" class="pill mini" id="slotMinus">칸 줄이기</button>
-      <button type="button" class="pill mini" id="slotPlus">칸 늘리기</button>
-    </div>
-  </div>
+      <!-- ═══════════ 1칸: 고르기 ═══════════ -->
+      <div class="col pick">
 
-  <!-- 로스팅 · 날짜 -->
-  <div class="card">
-    <div class="card-hd">
-      <span class="sec">로스팅 포인트</span>
-      <div class="spacer"></div>
-      <button class="pill" id="saveBtn">저장</button>
+        <!-- 커피 선택 (검색창은 상단바에 있다) -->
+        <div class="card" id="secCoffee">
+          <div class="card-hd">
+            <span class="sec">커피 선택</span>
+            <div class="spacer"></div>
+            <button class="pill" id="refreshBtn">새로고침</button>
+          </div>
+          <div class="row">
+            <select id="coffeeSelect"><option>불러오는 중…</option></select>
+          </div>
+          <div class="flavor" id="flavor">—</div>
+        </div>
+
+        <!-- 빠른 인쇄: 형식 · 날짜 · 단축 버튼 -->
+        <div class="card" id="secType">
+          <div class="card-hd"><span class="sec">형식 · 라벨 맨 위에 찍힙니다</span></div>
+          <div class="seg wrap" id="typeSeg"></div>
+          <div class="row" style="margin-top:10px">
+            <input type="text" id="typeTitle"
+                   placeholder="제목 직접 입력 — 비우면 위 형식이 찍힙니다" autocomplete="off">
+            <button class="pill mini" id="typeAdd">버튼 추가</button>
+            <button class="pill mini danger" id="typeDel" disabled>지우기</button>
+          </div>
+
+          <div class="switchrow">
+            <label class="sw">
+              <input type="checkbox" id="quickVertical"><span class="track"></span>
+            </label>
+            <span class="swtext">세로형 — 글자를 <b>세워서</b> 찍습니다</span>
+          </div>
+
+          <div class="switchrow">
+            <label class="sw">
+              <input type="checkbox" id="quickDate"><span class="track"></span>
+            </label>
+            <span class="swtext">날짜 찍기 — 언제나 오늘 날짜 <b id="todayText"></b></span>
+          </div>
+
+          <div class="switchrow">
+            <label class="sw">
+              <input type="checkbox" id="quickHalf"><span class="track"></span>
+            </label>
+            <span class="swtext">하프카페인 — 라벨 <b>제일 아래</b>에 찍힙니다</span>
+          </div>
+
+          <div class="card-hd" style="margin-top:16px">
+            <span class="sec">단축 버튼</span>
+            <div class="spacer"></div>
+            <span class="sec swipe-tip" style="font-weight:500">커피·프리셋을 칸으로 끌어다 놓기</span>
+          </div>
+          <div id="dragChip" class="dragchip">커피를 먼저 고르세요</div>
+          <div id="presetChip" class="dragchip">프리셋을 먼저 고르세요</div>
+          <div id="shortcutSlots" class="slots"></div>
+          <div class="slotbar">
+            <div class="spacer"></div>
+            <button type="button" class="pill mini" id="slotMinus">칸 줄이기</button>
+            <button type="button" class="pill mini" id="slotPlus">칸 늘리기</button>
+          </div>
+        </div>
+
+        <!-- 로스팅 · 날짜 -->
+        <div class="card" id="secRoast">
+          <div class="card-hd">
+            <span class="sec">로스팅 포인트</span>
+            <div class="spacer"></div>
+            <button class="pill" id="saveBtn">저장</button>
+          </div>
+          <input type="text" id="roasting" placeholder="예: Light / Medium / Dark" autocomplete="off">
+          <div class="row" style="margin-top:10px">
+            <label class="chk" style="flex:none">
+              <input type="checkbox" id="dateCheck"><span class="box"></span>날짜 표시
+            </label>
+            <input type="text" id="dateInput" placeholder="예: 2026.05.14" disabled>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ═══════════ 2칸: 꾸미기 ═══════════ -->
+      <div class="col style">
+
+        <!-- 폰트 -->
+        <div class="card" id="secFont">
+          <div class="card-hd"><span class="sec">한글 폰트</span></div>
+          <!-- 값은 그대로 select 가 들고, 보이는 건 글꼴로 미리 보여주는 목록 -->
+          <select id="fontSelect" hidden></select>
+          <button type="button" id="fontPickBtn" class="fontpick">
+            <span id="fontPickName">서울한강 Regular</span>
+            <span id="fontPickSample">커피클럽 가나다 Coffee</span>
+          </button>
+          <div id="fontPanel" class="fontpanel hide"></div>
+
+          <div class="card-hd" style="margin-top:16px">
+            <span class="sec">폰트 크기</span>
+            <span class="sec swipe-tip" style="margin-left:auto;font-weight:500">숫자를 위아래로 쓸어보세요</span>
+          </div>
+          <div class="steps" id="fontSteps"></div>
+        </div>
+
+        <!-- 추가 텍스트 -->
+        <div class="card" id="secText">
+          <div class="card-hd">
+            <span class="sec">추가 텍스트</span>
+            <div class="spacer"></div>
+            <select id="presetSelect" style="width:132px;height:30px;padding:0 30px 0 12px;border-radius:15px;font-size:12px;font-weight:600;color:var(--ink-sub)">
+              <option value="">— 프리셋 —</option>
+            </select>
+            <button class="pill mini" id="presetSave">저장</button>
+            <button class="pill mini danger" id="presetDel">삭제</button>
+          </div>
+          <textarea id="customText" placeholder="라벨에 추가할 문구 (비워두면 미출력)&#10;엔터로 줄바꿈"></textarea>
+          <div class="steps" style="margin-top:10px;grid-template-columns:1fr" id="customSteps"></div>
+        </div>
+
+        <!-- 라벨 크기 · 방향 -->
+        <div class="card" id="secLabel">
+          <div class="card-hd"><span class="sec">라벨 크기</span></div>
+          <div class="seg" id="sizeSeg" style="grid-template-columns:repeat(2,1fr)"></div>
+
+          <div class="card-hd" style="margin-top:14px"><span class="sec">방향</span></div>
+          <div class="seg" id="dirSeg" style="grid-template-columns:repeat(2,1fr)">
+            <button class="on" data-v="0">가로형</button>
+            <button data-v="1">세로형 (글자 90°)</button>
+          </div>
+        </div>
+
+        <!-- QR -->
+        <div class="card" id="secQR">
+          <div class="card-hd"><span class="sec">QR 코드 대상</span></div>
+          <div class="seg" id="qrSeg">
+            <button class="on" data-i="0">☕ 커피 정보</button>
+            <button data-i="1">🛒 네이버 스토어</button>
+            <button data-i="2">✏️ 직접 입력</button>
+          </div>
+          <input type="text" id="qrCustom" class="hide" style="margin-top:10px" placeholder="https://…" autocomplete="off">
+        </div>
+
+        <!-- 표시 설정 -->
+        <div class="card" id="secOrder">
+          <div class="card-hd"><span class="sec">표시 설정 · ▲▼ 로 순서 변경</span></div>
+          <ul id="orderList"></ul>
+          <div class="row" style="margin-top:12px;gap:18px">
+            <label class="chk"><input type="checkbox" id="visQR" checked><span class="box"></span>QR코드</label>
+            <label class="chk"><input type="checkbox" id="visDetails" checked><span class="box"></span>자세히보기</label>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ═══════════ 3칸: 미리보기 · 인쇄 (넓은 화면에선 화면에 고정) ═══════════ -->
+      <aside class="col side">
+
+        <div class="card" id="secPreview">
+          <div class="card-hd">
+            <span class="sec">미리보기</span>
+            <span class="sec swipe-tip" style="margin-left:auto;font-weight:500">글자를 눌러 바로 수정</span>
+          </div>
+          <div class="preview"><canvas id="previewCanvas" width="720" height="360"></canvas></div>
+          <div class="steps" style="margin-top:12px;grid-template-columns:1fr" id="copySteps"></div>
+          <div class="actions" style="margin-top:12px;justify-content:flex-end">
+            <button class="btn slim" id="calibBtn">캘리브레이션</button>
+          </div>
+          <div id="status"></div>
+          <div class="hint" id="hintText">
+            인쇄하려면 <b>Chrome</b>(또는 Edge)에서 열고, RP420이 USB로 연결된 상태에서
+            <b>프린터 연결</b>을 눌러 장치를 선택하세요. 편집과 미리보기는 어떤 브라우저에서도 가능합니다.
+          </div>
+        </div>
+
+        <!-- 인쇄 버튼 — 폰에선 화면 아래에 떠 있고(position:fixed), 넓은 화면에선 미리보기 바로 아래.
+             ★ 카드(.card) 안에 넣으면 안 된다: 카드의 backdrop-filter 때문에 fixed 가
+               화면이 아니라 카드 기준이 되어 폰에서 버튼이 안 뜬다. -->
+        <div class="printFloat">
+          <button class="btn primary" id="printBtn">인쇄</button>
+        </div>
+
+      </aside>
     </div>
-    <input type="text" id="roasting" placeholder="예: Light / Medium / Dark" autocomplete="off">
-    <div class="row" style="margin-top:10px">
-      <label class="chk" style="flex:none">
-        <input type="checkbox" id="dateCheck"><span class="box"></span>날짜 표시
-      </label>
-      <input type="text" id="dateInput" placeholder="예: 2026.05.14" disabled>
-    </div>
-  </div>
-
-  <!-- 폰트 -->
-  <div class="card">
-    <div class="card-hd"><span class="sec">한글 폰트</span></div>
-    <!-- 값은 그대로 select 가 들고, 보이는 건 글꼴로 미리 보여주는 목록 -->
-    <select id="fontSelect" hidden></select>
-    <button type="button" id="fontPickBtn" class="fontpick">
-      <span id="fontPickName">서울한강 Regular</span>
-      <span id="fontPickSample">커피클럽 가나다 Coffee</span>
-    </button>
-    <div id="fontPanel" class="fontpanel hide"></div>
-
-    <div class="card-hd" style="margin-top:16px">
-      <span class="sec">폰트 크기</span>
-      <span class="sec swipe-tip" style="margin-left:auto;font-weight:500">숫자를 위아래로 쓸어보세요</span>
-    </div>
-    <div class="steps" id="fontSteps"></div>
-  </div>
-
-  <!-- 추가 텍스트 -->
-  <div class="card">
-    <div class="card-hd">
-      <span class="sec">추가 텍스트</span>
-      <div class="spacer"></div>
-      <select id="presetSelect" style="width:132px;height:30px;padding:0 30px 0 12px;border-radius:15px;font-size:12px;font-weight:600;color:var(--ink-sub)">
-        <option value="">— 프리셋 —</option>
-      </select>
-      <button class="pill mini" id="presetSave">저장</button>
-      <button class="pill mini danger" id="presetDel">삭제</button>
-    </div>
-    <textarea id="customText" placeholder="라벨에 추가할 문구 (비워두면 미출력)&#10;엔터로 줄바꿈"></textarea>
-    <div class="steps" style="margin-top:10px;grid-template-columns:1fr" id="customSteps"></div>
-  </div>
-
-  <!-- 라벨 크기 · 방향 · 형식 -->
-  <div class="card">
-    <div class="card-hd"><span class="sec">라벨 크기</span></div>
-    <div class="seg" id="sizeSeg" style="grid-template-columns:repeat(2,1fr)"></div>
-
-    <div class="card-hd" style="margin-top:14px"><span class="sec">방향</span></div>
-    <div class="seg" id="dirSeg" style="grid-template-columns:repeat(2,1fr)">
-      <button class="on" data-v="0">가로형</button>
-      <button data-v="1">세로형 (글자 90°)</button>
-    </div>
-
-  </div>
-
-  <!-- QR -->
-  <div class="card">
-    <div class="card-hd"><span class="sec">QR 코드 대상</span></div>
-    <div class="seg" id="qrSeg">
-      <button class="on" data-i="0">☕ 커피 정보</button>
-      <button data-i="1">🛒 네이버 스토어</button>
-      <button data-i="2">✏️ 직접 입력</button>
-    </div>
-    <input type="text" id="qrCustom" class="hide" style="margin-top:10px" placeholder="https://…" autocomplete="off">
-  </div>
-
-  <!-- 표시 설정 -->
-  <div class="card">
-    <div class="card-hd"><span class="sec">표시 설정 · ▲▼ 로 순서 변경</span></div>
-    <ul id="orderList"></ul>
-    <div class="row" style="margin-top:12px;gap:18px">
-      <label class="chk"><input type="checkbox" id="visQR" checked><span class="box"></span>QR코드</label>
-      <label class="chk"><input type="checkbox" id="visDetails" checked><span class="box"></span>자세히보기</label>
-    </div>
-  </div>
-
-  <!-- 미리보기 · 출력 -->
-  <div class="card">
-    <div class="card-hd">
-      <span class="sec">미리보기</span>
-      <span class="sec swipe-tip" style="margin-left:auto;font-weight:500">글자를 눌러 바로 수정</span>
-    </div>
-    <div class="preview"><canvas id="previewCanvas" width="720" height="360"></canvas></div>
-    <div class="steps" style="margin-top:12px;grid-template-columns:1fr" id="copySteps"></div>
-    <div class="actions" style="margin-top:12px;justify-content:flex-end">
-      <button class="btn slim" id="calibBtn">캘리브레이션</button>
-    </div>
-    <div id="status"></div>
-    <div class="hint" id="hintText">
-      인쇄하려면 <b>Chrome</b>(또는 Edge)에서 열고, RP420이 USB로 연결된 상태에서
-      <b>프린터 연결</b>을 눌러 장치를 선택하세요. 편집과 미리보기는 어떤 브라우저에서도 가능합니다.
-    </div>
-  </div>
-
-</div>
-
-<!-- 인쇄 버튼은 화면 아래에 늘 떠 있다 — 어디까지 스크롤했든 바로 인쇄 -->
-<div class="printFloat">
-  <button class="btn primary" id="printBtn">인쇄</button>
+  </main>
 </div>
 
 <script src="lib/qrcode.js"></script>
-<script src="app.js?v=20261012a"></script>
+<script src="app.js?v=20261124a"></script>
 </body>
 </html>

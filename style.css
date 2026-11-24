@@ -85,7 +85,7 @@ button, select, label, .seg button, .pill, .btn {
   touch-action:manipulation;       /* 더블탭 확대 없이 즉시 반응 */
 }
 /* 글자 선택으로 인한 확대 메뉴 방지 (입력란은 예외) */
-button, label, .sec, .grip, .top h1 { -webkit-user-select:none; user-select:none; }
+button, label, .sec, .grip, .brand, .hero h1, .stat { -webkit-user-select:none; user-select:none; }
 input, textarea, .flavor { -webkit-user-select:text; user-select:text; }
 
 :root {
@@ -595,3 +595,167 @@ body { padding-bottom:calc(110px + env(safe-area-inset-bottom)); }
 
 /* 형식 [지우기] — 직접 만든 형식을 골랐을 때만 눌린다 */
 #typeDel:disabled { opacity: .35; cursor: default; }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   대시보드 레이아웃 (2026-11-24) — 사용자가 준 참고 화면을 따른다:
+   상단바(로고 · 검색 · 프린터) + 왼쪽 아이콘 메뉴 + 인사말 · 상태 타일 4개 + 여러 칸.
+
+   폭에 따라
+     ≥1280px   왼쪽 메뉴 + 3칸   [고르기 | 꾸미기 | 미리보기·인쇄(화면에 고정)]
+     900~1279  왼쪽 메뉴 + 2칸   [설정(고르기+꾸미기) | 미리보기·인쇄(고정)]
+     <900      한 칸 — 예전 폰 화면 그대로. 인쇄 버튼은 화면 아래에 떠 있다.
+
+   ★ .shell · .side 에는 backdrop-filter / transform / filter 를 쓰지 않는다.
+     인쇄 버튼(.printFloat)이 그 안에 있어서, 그런 속성이 붙으면 폰에서 position:fixed 가
+     화면이 아니라 그 상자 기준이 되어 버튼이 안 뜬다. (카드 안에 안 넣는 것도 같은 이유)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── 공통 (폰 포함) ── */
+.shell { max-width:520px; margin:0 auto; }        /* 폰: 예전 .wrap 과 같은 폭 */
+
+.topbar { display:flex; align-items:center; gap:10px 12px; flex-wrap:wrap; margin-bottom:16px; padding:0 2px; }
+.topbar .spacer { flex:1; }
+.brand { display:flex; align-items:center; gap:9px; font-size:19px; font-weight:700; letter-spacing:-.5px; white-space:nowrap; }
+.brand img { width:28px; height:28px; object-fit:contain; }
+
+/* 커피 검색 — 폰에선 상단바 둘째 줄 전체 폭 */
+.tsearch { order:3; flex:1 1 100%; position:relative; display:block; }
+.tsearch svg {
+  position:absolute; left:16px; top:50%; transform:translateY(-50%);
+  width:17px; height:17px; color:var(--ink-mute); pointer-events:none;
+}
+.tsearch input[type=search] { padding-left:44px; }
+
+.sidebar, .hero, .stats { display:none; }        /* 폰에선 숨긴다 */
+
+.sidebar svg, .stat .k svg {
+  fill:none; stroke:currentColor; stroke-width:1.8;
+  stroke-linecap:round; stroke-linejoin:round;
+}
+
+/* 왼쪽 메뉴로 카드에 갔을 때 잠깐 테두리를 밝혀 어디인지 보여준다 */
+@keyframes cardFlash {
+  0%   { box-shadow:0 0 0 0 rgba(29,29,31,.0),   0 12px 32px -12px rgba(16,24,40,.14); }
+  25%  { box-shadow:0 0 0 3px rgba(29,29,31,.28), 0 12px 32px -12px rgba(16,24,40,.14); }
+  100% { box-shadow:0 0 0 0 rgba(29,29,31,.0),   0 12px 32px -12px rgba(16,24,40,.14); }
+}
+.card.flash { animation:cardFlash 1.3s ease-out; }
+
+/* ── 넓은 화면 (900px 이상) ── */
+@media (min-width:900px) {
+  html { scroll-behavior:smooth; }
+  body {
+    padding:26px 28px 32px;                         /* 떠 있는 버튼이 없으니 아래 여백을 줄인다 */
+    background:
+      radial-gradient(1200px 800px at 8% -12%, rgba(255,255,255,.95), transparent 60%),
+      radial-gradient(1000px 720px at 108% 8%, rgba(231,225,218,.9), transparent 62%),
+      linear-gradient(160deg, #f5f3f0 0%, #edeae6 52%, #e4e0da 100%);
+    background-attachment:fixed;
+  }
+
+  /* 바깥 틀 — 참고 화면의 커다란 둥근 창 */
+  .shell {
+    max-width:1480px;
+    display:grid; grid-template-columns:56px minmax(0, 1fr);
+    grid-template-areas:'top top' 'nav main';
+    gap:20px 24px;
+    padding:20px 26px 28px;
+    background:rgba(255,255,255,.40);
+    border:1px solid rgba(255,255,255,.8);
+    border-radius:34px;
+    box-shadow:0 1px 0 rgba(255,255,255,.7) inset, 0 40px 90px -40px rgba(60,45,30,.28);
+  }
+
+  /* 상단바 — 로고 · 검색 · (빈칸) · 프린터 */
+  .topbar { grid-area:top; flex-wrap:nowrap; margin:0; padding:0; }
+  .brand { min-width:156px; font-size:20px; }
+  .tsearch { order:0; flex:0 1 440px; }
+  .tsearch input[type=search] {
+    height:46px; border-radius:23px;
+    background:rgba(255,255,255,.62); border-color:rgba(255,255,255,.9);
+  }
+  .tsearch input[type=search]:focus { background:#fff; }
+  #connectBtn {
+    height:46px; border-radius:23px; padding:0 20px;
+    background:rgba(255,255,255,.62); border-color:rgba(255,255,255,.9);
+  }
+  #connectBtn.on { background:#1e1e1e; border-color:#1e1e1e; }
+
+  /* 왼쪽 아이콘 메뉴 */
+  .sidebar {
+    grid-area:nav; display:flex; flex-direction:column; align-items:center; gap:10px;
+    position:sticky; top:26px; align-self:start;
+    height:calc(100vh - 160px); min-height:440px;
+  }
+  .sidebar a {
+    width:46px; height:46px; border-radius:15px;
+    display:grid; place-items:center;
+    color:var(--ink-sub);
+    background:rgba(255,255,255,.55); border:1px solid rgba(255,255,255,.85);
+    transition:background .15s, color .15s, box-shadow .15s, transform .15s;
+  }
+  .sidebar a svg { width:21px; height:21px; }
+  .sidebar a:hover { background:#fff; color:var(--ink); }
+  .sidebar a.on { background:#fff; color:var(--ink); box-shadow:0 8px 20px -8px rgba(60,45,30,.35); }
+  .sidebar a:active { transform:scale(.96); }
+  .sidebar .gap { flex:1; }
+
+  .main { grid-area:main; min-width:0; }
+
+  /* 인사말 */
+  .hero { display:block; margin:6px 0 20px; }
+  .hero h1 { font-size:30px; font-weight:600; letter-spacing:-.8px; }
+  .hero p  { margin-top:7px; font-size:13px; color:var(--ink-mute); }
+
+  /* 상태 타일 4개 */
+  .stats { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:14px; margin-bottom:22px; }
+  .stat {
+    min-width:0; padding:15px 18px;
+    background:rgba(255,255,255,.55); border:1px solid rgba(255,255,255,.85); border-radius:20px;
+  }
+  .stat .k { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:500; color:var(--ink-mute); }
+  .stat .k svg { width:15px; height:15px; }
+  .stat b {
+    display:block; margin-top:8px;
+    font-size:19px; font-weight:600; letter-spacing:-.4px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  #statPrinterTile b::before {
+    content:''; display:inline-block; width:8px; height:8px; margin:0 8px 2px 0;
+    border-radius:50%; background:#c7c7cc; vertical-align:middle;
+  }
+  #statPrinterTile.on b::before { background:#30d158; box-shadow:0 0 0 3px rgba(48,209,88,.18); }
+
+  /* 칸 — 2칸 (설정 | 미리보기) */
+  .cols {
+    display:grid; gap:0 18px; align-items:start;
+    grid-template-columns:minmax(0, 1fr) 380px;
+    grid-template-areas:'pick side' 'style side';
+  }
+  .col.pick  { grid-area:pick; min-width:0; }
+  .col.style { grid-area:style; min-width:0; }
+  .side {
+    grid-area:side; min-width:0; position:sticky; top:26px;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .card { scroll-margin-top:26px; border-radius:22px; }
+
+  /* 폰트 크기 숫자 칸 — 칸이 좁아지면(3칸 1280px 에서 약 320px) 2열이 카드 밖으로 14px
+     삐져나왔다. 칸 하나에 150px 이상 들어갈 때만 2열, 아니면 1열. (폰은 위에서 1열 고정) */
+  #fontSteps { grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); }
+
+  /* 인쇄 버튼 — 넓은 화면에선 오른쪽 칸 맨 위 (참고 화면의 검은 버튼 자리).
+     미리보기 아래에 두면 페이지 맨 위에서 인사말·타일에 밀려 화면 밖으로 잘렸다
+     (1440×900 에서 894~951px). 위로 올리면 스크롤 어디서든 보인다. */
+  .printFloat { position:static; padding:0; order:-1; }
+  .printFloat .btn.primary { max-width:none; padding:17px 8px; font-size:17px; }
+}
+
+/* ── 아주 넓은 화면 (1280px 이상) — 3칸 ── */
+@media (min-width:1280px) {
+  .cols {
+    grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) 400px;
+    grid-template-areas:'pick style side';
+  }
+}
