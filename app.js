@@ -1596,25 +1596,22 @@ async function doPrint() {
       });
     } else {
       const bytes = labelToRaster(buildOrder());
+      // 정렬이 안 돼 있으면(프린터를 켠 뒤·크기 변경) 캘리브 버튼과 똑같이 맞추고 찍는다.
+      // 캘리브 1번으로는 첫 장이 밀렸다 → 캘리브 → 빈 라벨 → 캘리브 (빈 라벨 3장). 배출은 하지 않는다.
+      if (CALIBRATE_EVERY_PRINT || !state.aligned || state.alignedSize !== state.labelSize) {
+        setStatus('캘리브레이션 중… (빈 라벨 3장, 15초쯤) — 끝나면 바로 인쇄합니다');
+        await calibrateUSB();
+        await sleep(COPY_GAP);
+        setStatus('인쇄 중…');
+      }
       const jobs = [];
-      // 정렬이 안 돼 있을 때만 캘리브 (빈 라벨 1장). 배출은 하지 않는다.
+      // ★ 캘리브는 용지를 "인쇄가 끝난 뒤 쉬는 자리"(절취선이 커팅바보다 3mm)에 세운다.
+      //   평소 인쇄처럼 먼저 되감고 찍어야 한다 — 안 그러면 15mm 아래로 내려간다.
       if (state.tearOut) {          // 커팅 위치로 나가 있으면 먼저 제자리로
         jobs.push({ data: backfeedCommand(state.tearOut + TEAR_BACKLASH), wait: RETRACT_WAIT });
         state.tearOut = 0;
       }
-      if (CALIBRATE_EVERY_PRINT || !state.aligned || state.alignedSize !== state.labelSize) {
-        for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
-        // ★ 캘리브는 용지를 "인쇄가 끝난 뒤 쉬는 자리"(절취선이 커팅바보다 3mm)에 세운다.
-        //   평소 인쇄처럼 먼저 되감고 찍어야 한다 — 안 그러면 15mm 아래로 내려간다.
-        jobs.push({ data: backfeedCommand(TEAR_FEED + TEAR_BACKLASH), wait: RETRACT_WAIT });
-      }
-      // 한 장 = 인쇄 → 피치보정 → 절취선을 커팅바로 (보내자마자 연결이 닫히면 이송이 안 돼 1초 둔다)
-      const oneLabel = () => {
-        const j = [{ data: bytes }];
-        if (sizeSpec(state.labelSize).pitchAdjust) j.push({ data: pitchFeedCommand(), wait: 300 });
-        j.push({ data: feedCommand(TEAR_FEED), wait: 1000 });
-        return j;
-      };
+      const oneLabel = () => oneLabelJobs(bytes);
       // ★ 여러 장도 "인쇄 버튼을 여러 번 누른 것"과 똑같이 — 장마다 연결을 새로 열고 닫는다.
       //   한 연결로 장을 이어 보내면 이전 장이 끝나기 전에 다음 되감기가 들어가
       //   장마다 조금씩 위로 올라갔다 (3장째 1~2mm, 실기). 한 장씩은 정확했다.
@@ -1636,25 +1633,64 @@ async function doPrint() {
   } finally { busy(false); }
 }
 
+// 한 장 = 인쇄 → 피치보정 → 절취선을 커팅바로 (보내자마자 연결이 닫히면 이송이 안 돼 1초 둔다)
+function oneLabelJobs(bytes) {
+  const j = [{ data: bytes }];
+  if (sizeSpec(state.labelSize).pitchAdjust) j.push({ data: pitchFeedCommand(), wait: 300 });
+  j.push({ data: feedCommand(TEAR_FEED), wait: 1000 });
+  return j;
+}
+
+// 빈 라벨 1장 — 인쇄 한 장과 똑같이 용지만 옮긴다 (아무것도 찍지 않는다).
+// 높이는 labelToBitmap 과 같은 "라벨 높이 + 간격" 이다.
+function blankLabelJobs() {
+  const sp = sizeSpec(state.labelSize);
+  const rows = sp.lh + Math.round(sp.gapMm * DPMM);
+  const bytesPerRow = W_FULL / 8;
+  return oneLabelJobs(rasterCommand(bytesPerRow, rows, new Uint8Array(bytesPerRow * rows)));
+}
+
+/**
+ * 캘리브레이션 (USB) — 캘리브 → 빈 라벨 1장 → 캘리브. 맥 앱 calibrate_full 과 같다.
+ *
+ * ★ 프린터를 켠 뒤 첫 캘리브는 제자리(절취선 +3mm)에 서지 않는다 (2026-11-26 실기).
+ *   "인쇄 한 번 → 캘리브" 를 하면 맞았다. 그 손동작을 그대로 한 번에 묶은 것이다:
+ *     1) 인쇄 한 장과 똑같이 (한 연결로) — 캘리브 → 되감기 → 빈 라벨 → 절취선을 커팅바로
+ *     2) 잠깐 쉬고 연결을 새로 열어 캘리브 버튼과 똑같이 — 되감기 → 캘리브
+ *   줄여보고 싶으면 반드시 프린터를 껐다 켜고 실기로 확인할 것.
+ */
+async function calibrateUSB() {
+  state.aligned = false;
+  const first = [];
+  if (state.tearOut) {          // 뜯는 자리에 나가 있으면 먼저 되감는다
+    first.push({ data: backfeedCommand(state.tearOut + TEAR_BACKLASH), wait: RETRACT_WAIT });
+    state.tearOut = 0;
+  }
+  for (const data of alignJobs()) first.push({ data, wait: ALIGN_WAIT });
+  first.push({ data: backfeedCommand(TEAR_FEED + TEAR_BACKLASH), wait: RETRACT_WAIT });
+  await sendUSBJobs([...first, ...blankLabelJobs()]);
+  state.tearOut = TEAR_FEED;
+  await sleep(COPY_GAP);
+  const second = [{ data: backfeedCommand(state.tearOut + TEAR_BACKLASH), wait: RETRACT_WAIT }];
+  for (const data of alignJobs()) second.push({ data, wait: ALIGN_WAIT });
+  await sendUSBJobs(second);
+  // 캘리브는 용지를 뜯는 자리(절취선 +3mm)에 세운다 → 다음 인쇄가 되감고 찍게 한다
+  state.tearOut = TEAR_FEED;
+  state.aligned = true;
+  state.alignedSize = state.labelSize;
+}
+
 async function doCalibrate() {
-  busy(true, '캘리브레이션 중… (라벨 1장 소비)');
+  busy(true, '캘리브레이션 중… (빈 라벨 3장, 15초쯤)');
   try {
     if (state.mode === 'server') {
-      await serverPost('calibrate', { size: state.labelSize });
+      await serverPost('calibrate', { size: state.labelSize });   // 맥이 같은 순서로 한다
+      state.aligned = true;
+      state.alignedSize = state.labelSize;
+      state.tearOut = TEAR_FEED;
     } else {
-      // 맥 앱 align() 과 같은 순서: 뜯는 자리에 나가 있으면 먼저 되감고 → 캘리브 → 되감기.
-      // (예전엔 캘리브 명령만 보내고 되감기를 빠뜨려 용지가 엉뚱한 곳에 섰다)
-      const jobs = [];
-      if (state.tearOut) {
-        jobs.push({ data: backfeedCommand(state.tearOut + TEAR_BACKLASH), wait: RETRACT_WAIT });
-      }
-      for (const data of alignJobs()) jobs.push({ data, wait: ALIGN_WAIT });
-      await sendUSBJobs(jobs);
+      await calibrateUSB();
     }
-    state.aligned = true;
-    state.alignedSize = state.labelSize;
-    // 캘리브는 용지를 뜯는 자리(절취선 +3mm)에 세운다 → 다음 인쇄가 되감고 찍게 한다
-    state.tearOut = TEAR_FEED;
     setStatus('✓ 캘리브레이션 완료');
   } catch (e) { setStatus('오류: ' + e.message); }
   finally { busy(false); }
